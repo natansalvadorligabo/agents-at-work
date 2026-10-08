@@ -16,8 +16,16 @@ describe('permissionUrl', () => {
 
 describe('browserOpenCommands', () => {
   test('tries Windows first, then macOS, then Linux', async () => {
-    const commands = browserOpenCommands('http://x')
-    expect(commands.map(command => command[0])).toEqual(['cmd', 'open', 'xdg-open'])
-    expect(commands[0]).toEqual(['cmd', '/c', 'start', '', 'http://x'])
+    const commands = browserOpenCommands('http://x/?a=1&b=2')
+    expect(commands.map(command => command[0])).toEqual(['rundll32', 'open', 'xdg-open'])
+  })
+
+  // Regression: `cmd /c start` cut the /office link at `&key=`, so the browser never opened.
+  test('passes the URL untouched, ampersands included', async () => {
+    expect(browserOpenCommands('http://x/?a=1&b=2')[0]).toEqual([
+      'rundll32',
+      'url.dll,FileProtocolHandler',
+      'http://x/?a=1&b=2',
+    ])
   })
 })

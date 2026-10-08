@@ -122,9 +122,11 @@ async function waitForOfficeServer($: EngineInterface): Promise<void> {
 
 async function runsSuccessfully($: EngineInterface, argv: string[]): Promise<boolean> {
   try {
-    const { exitCode } = await $.process.run(argv)
+    const { exitCode, stderr } = await $.process.run(argv)
+    if (exitCode !== 0) $.ui.log(`agents-at-work: ${argv[0]} exited ${exitCode}: ${stderr}`, { to: 'debug' })
     return exitCode === 0
-  } catch {
+  } catch (error) {
+    $.ui.log(`agents-at-work: ${argv[0]} did not run: ${String(error)}`, { to: 'debug' })
     return false
   }
 }

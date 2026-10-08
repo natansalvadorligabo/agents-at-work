@@ -44,13 +44,18 @@ the address bar on load). The server also refuses requests from other web sites,
 
 ## Install
 
+Requirements: **Claude Code 2.1.29x or newer** (the plugin uses the early-access function hooks API) and
+**Node.js 20+** on your `PATH` (the office server runs on Node). Nothing else: no `npm install` needed.
+
 ```sh
-claude plugin install agents-at-work@<marketplace>   # or, from a clone:
-claude --plugin-dir /path/to/agents-at-work
+claude plugin marketplace add natansalvadorligabo/agents-at-work
+claude plugin install agents-at-work@agents-at-work
 ```
 
-Then, inside a session, run `/office` to open the office in your browser. The plugin starts a small
-local server on `127.0.0.1:47821` (Node ≥ 20) that only listens on your machine.
+Start a new session and run `/office`: the office opens in your browser. The plugin starts a small
+server on `127.0.0.1:47821` that only listens on your machine.
+
+To try a local clone instead: `claude --plugin-dir /path/to/agents-at-work`.
 
 ## Develop
 

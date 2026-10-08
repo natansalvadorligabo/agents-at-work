@@ -27,12 +27,12 @@ export function permissionUrl(requestId: string, waitMs?: number): string {
 
 /**
  * The command lines that open a URL in the default browser on Windows, macOS and Linux, in the order to try them.
- * @example browserOpenCommands('http://x')[0] // ['cmd', '/c', 'start', '', 'http://x']
+ * @example browserOpenCommands('http://x')[0] // ['rundll32', 'url.dll,FileProtocolHandler', 'http://x']
  */
 export function browserOpenCommands(url: string): string[][] {
-  // "start" is a cmd builtin; its empty first argument is the window title, so the URL is not read as one.
+  // Not `cmd /c start`: cmd reads the `&` between query parameters as a command separator.
   return [
-    ['cmd', '/c', 'start', '', url],
+    ['rundll32', 'url.dll,FileProtocolHandler', url],
     ['open', url],
     ['xdg-open', url],
   ]

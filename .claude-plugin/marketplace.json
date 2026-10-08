@@ -1,0 +1,17 @@
+{
+  "name": "agents-at-work",
+  "owner": {
+    "name": "natansalvadorligabo",
+    "url": "https://github.com/natansalvadorligabo"
+  },
+  "metadata": {
+    "description": "Agents at Work: watch (and approve) your Claude Code agents in a voxel office."
+  },
+  "plugins": [
+    {
+      "name": "agents-at-work",
+      "source": "./",
+      "description": "A voxel office in your browser where the main agent and its subagents work, hand off tasks, ask for permissions and take way too many coffee breaks."
+    }
+  ]
+}
