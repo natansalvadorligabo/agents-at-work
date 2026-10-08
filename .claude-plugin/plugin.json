@@ -1,5 +1,5 @@
 {
   "name": "escritorio-agentes",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Escritório em voxel no navegador que mostra o agente principal e os subagentes trabalhando e trocando entregas."
 }

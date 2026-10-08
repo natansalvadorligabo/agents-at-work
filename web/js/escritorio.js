@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { criarMalha } from './voxel.js'
 import {
+  modeloBancadaCafe,
   modeloBatentePorta,
   modeloCadeira,
   modeloEnvelope,
@@ -9,9 +10,11 @@ import {
   modeloJanela,
   modeloLedsRack,
   modeloLousa,
+  modeloLuzCafeteira,
   modeloMesa,
   modeloMesaGlobo,
   modeloMesaTelefone,
+  modeloPocaCafe,
   modeloRack,
   modeloVaso,
 } from './modelos.js'
@@ -19,6 +22,7 @@ import { GradeDeCaminhos } from './caminhos.js'
 import { FiguraAgente } from './personagem.js'
 import { ControladorAgente } from './comportamento.js'
 import { ControleCamera } from './camera.js'
+import { VAGAS_CAFE, sortearFofoca } from './cafe.js'
 
 const PROFUNDIDADE_SALA = 9
 const LARGURA_MINIMA_SALA = 14
@@ -34,6 +38,12 @@ const DURACAO_VOO_ENTREGA_MS = 750
 const QUANTIDADE_MAXIMA_LADRILHOS = 4096
 const DISTANCIA_MINIMA_ENTRE_FIGURAS = 0.55
 const OCIOSIDADE_PADRAO_MS = 45000
+const BANCADA_CAFE = { x: 0.38, z: 5.0 }
+const QUANTIDADE_VAPOR = 4
+const DURACAO_POCA_MS = 12000
+const ESPERA_ANTES_DA_FOFOCA_MS = 1500
+const DURACAO_FALA_FOFOCA_MS = 2800
+const INTERVALO_ENTRE_FOFOCAS_MS = 9000
 const ILUMINACAO = {
   normal: { ambiente: 1.6, sol: 2.1, fundo: 0x1d2230 },
   ociosa: { ambiente: 0.28, sol: 0.1, fundo: 0x0c0f17 },
@@ -42,6 +52,7 @@ const ILUMINACAO = {
 
 const TILES_BLOQUEADOS_FIXOS = [
   [0, 0], [1, 0], [3, 0], [4, 0], [6, 0], [8, 0], [10, 0], [12, 0], [0, 8],
+  [0, 4], [0, 5],
 ]
 
 export class Escritorio {
@@ -56,9 +67,15 @@ export class Escritorio {
     this.vagasPorAgente = new Map()
     this.mesasPorVaga = new Map()
     this.voosEntrega = []
+    this.pocasCafe = []
+    this.vagasCafe = []
+    this.estatisticasCafe = new Map()
+    this.proximaFofoca = 0
+    this.fofocaPossivelDesde = 0
     this.largura = LARGURA_MINIMA_SALA
     this.grade = new GradeDeCaminhos(this.largura, PROFUNDIDADE_SALA)
     this.aoSelecionar = () => {}
+    this.aoClicarCafeteira = () => {}
 
     this.renderizador = new THREE.WebGLRenderer({ antialias: false, alpha: false })
     this.renderizador.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -155,6 +172,7 @@ export class Escritorio {
     colocar(modeloMesaTelefone(), 10.5, 0, 0.42)
     colocar(modeloVaso(), 12.5, 0, 0.45)
     colocar(modeloVaso(), 0.5, 0, 8.45)
+    this.criarCafeteira(colocar)
 
     const batente = colocar(modeloBatentePorta(), -0.1, 0, LINHA_PORTA + 0.5)
     batente.castShadow = false
@@ -169,6 +187,29 @@ export class Escritorio {
     mesaPrincipal.position.set(MESA_PRINCIPAL.x + 1, 0, MESA_PRINCIPAL.z + 0.5)
     mesaPrincipal.scale.setScalar(1)
     this.cena.add(mesaPrincipal)
+  }
+
+  criarCafeteira(colocar) {
+    const pivo = [15, 0, 6]
+    this.cafeteira = colocar(modeloBancadaCafe(), BANCADA_CAFE.x, 0, BANCADA_CAFE.z, Math.PI / 2)
+    const luz = criarMalha(modeloLuzCafeteira(), pivo)
+    luz.material = new THREE.MeshBasicMaterial({ vertexColors: true })
+    luz.castShadow = false
+    this.cafeteira.add(luz)
+    this.luzCafeteira = luz
+
+    // O vapor sai da boca da jarra (voxel 7.5, 25, 6.5 do modelo), já no referencial girado da bancada.
+    const voxel = 1 / 16
+    const geometriaVapor = new THREE.BoxGeometry(1.4 * voxel, 1.4 * voxel, 1.4 * voxel)
+    this.vapor = []
+    for (let i = 0; i < QUANTIDADE_VAPOR; i++) {
+      const material = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false })
+      const fiapo = new THREE.Mesh(geometriaVapor, material)
+      fiapo.userData.fase = i / QUANTIDADE_VAPOR
+      fiapo.userData.base = new THREE.Vector3((7.5 - pivo[0]) * voxel, 25 * voxel, (6.5 - pivo[2]) * voxel)
+      this.cafeteira.add(fiapo)
+      this.vapor.push(fiapo)
+    }
   }
 
   criarConjuntoMesa() {
@@ -354,6 +395,8 @@ export class Escritorio {
     }
     for (const voo of this.voosEntrega) voo.malha.removeFromParent()
     this.voosEntrega = []
+    this.vagasCafe = []
+    for (const estatistica of this.estatisticasCafe.values()) estatistica.desde = null
     this.atualizarSala(true)
   }
 
@@ -407,6 +450,124 @@ export class Escritorio {
     })
   }
 
+  ocuparVagaCafe(agenteId) {
+    let vaga = this.vagasCafe.indexOf(agenteId)
+    if (vaga === -1) {
+      vaga = this.vagasCafe.findIndex(ocupante => !ocupante)
+      if (vaga === -1) vaga = this.vagasCafe.length
+      this.vagasCafe[vaga] = agenteId
+    }
+    if (vaga < VAGAS_CAFE.length) return VAGAS_CAFE[vaga]
+    const [x, z] = VAGAS_CAFE[vaga % VAGAS_CAFE.length]
+    return [x + 0.6, z]
+  }
+
+  liberarVagaCafe(agenteId) {
+    const vaga = this.vagasCafe.indexOf(agenteId)
+    if (vaga !== -1) this.vagasCafe[vaga] = null
+  }
+
+  nomeDoAgente(dados) {
+    if (dados.tipoAgente === 'principal') return 'Agente principal'
+    return dados.nome || dados.descricao || dados.tipoAgente || dados.id
+  }
+
+  estatisticaCafe(agenteId) {
+    return this.estatisticasCafe.get(agenteId) ?? { cafes: 0, msNoCafe: 0, desde: null }
+  }
+
+  registrarChegadaCafe(figura) {
+    const estatistica = this.estatisticasCafe.get(figura.id) ?? { cafes: 0, msNoCafe: 0, desde: null }
+    estatistica.nome = this.nomeDoAgente(figura.dados)
+    estatistica.tipoAgente = figura.dados.tipoAgente
+    estatistica.cafes++
+    estatistica.desde = performance.now()
+    this.estatisticasCafe.set(figura.id, estatistica)
+    return estatistica.cafes
+  }
+
+  registrarSaidaCafe(agenteId) {
+    const estatistica = this.estatisticasCafe.get(agenteId)
+    if (!estatistica || estatistica.desde === null) return
+    estatistica.msNoCafe += performance.now() - estatistica.desde
+    estatistica.desde = null
+  }
+
+  tempoNoCafe(estatistica) {
+    return estatistica.msNoCafe + (estatistica.desde === null ? 0 : performance.now() - estatistica.desde)
+  }
+
+  rankingCafe() {
+    return [...this.estatisticasCafe.entries()]
+      .map(([id, estatistica]) => ({ id, ...estatistica, msNoCafe: this.tempoNoCafe(estatistica), noCafe: estatistica.desde !== null }))
+      .sort((a, b) => b.msNoCafe - a.msNoCafe || b.cafes - a.cafes)
+  }
+
+  criarPocaCafe(x, z) {
+    const modelo = modeloPocaCafe()
+    const malha = criarMalha(modelo, [modelo.largura / 2, 0, modelo.profundidade / 2])
+    malha.castShadow = false
+    malha.position.set(x, 0.002, z)
+    malha.rotation.y = Math.random() * Math.PI
+    this.cena.add(malha)
+    this.pocasCafe.push({ malha, criadaEm: performance.now() })
+  }
+
+  atualizarPocasCafe(agora) {
+    this.pocasCafe = this.pocasCafe.filter(poca => {
+      const idade = agora - poca.criadaEm
+      const restante = DURACAO_POCA_MS - idade
+      if (restante <= 0) {
+        poca.malha.removeFromParent()
+        return false
+      }
+      poca.malha.scale.setScalar(Math.max(0.001, Math.min(1, idade / 250, restante / 1500)))
+      return true
+    })
+  }
+
+  animarCafeteira(agora) {
+    const alguemNoCafe = [...this.controladores.values()].some(controlador => controlador.noCafe)
+    this.luzCafeteira.visible = !alguemNoCafe || Math.floor(agora / 300) % 2 === 0
+    const opacidadeMaxima = alguemNoCafe ? 0.85 : 0.35
+    for (const fiapo of this.vapor) {
+      const progresso = (agora / 2200 + fiapo.userData.fase) % 1
+      fiapo.position.copy(fiapo.userData.base)
+      fiapo.position.y += progresso * 0.55
+      fiapo.position.x += Math.sin(progresso * 9 + fiapo.userData.fase * 6) * 0.04
+      fiapo.material.opacity = Math.sin(progresso * Math.PI) * opacidadeMaxima
+      fiapo.scale.setScalar(1 + progresso * 1.5)
+    }
+  }
+
+  // Dois ou mais agentes parados no café: um puxa assunto e o outro responde.
+  atualizarFofoca(agora) {
+    const disponiveis = [...this.controladores.values()].filter(controlador => controlador.disponivelParaFofoca)
+    if (disponiveis.length < 2) {
+      this.fofocaPossivelDesde = 0
+      return
+    }
+    if (!this.fofocaPossivelDesde) this.fofocaPossivelDesde = agora
+    if (agora - this.fofocaPossivelDesde < ESPERA_ANTES_DA_FOFOCA_MS || agora < this.proximaFofoca) return
+    this.proximaFofoca = agora + INTERVALO_ENTRE_FOFOCAS_MS
+
+    const indiceA = Math.floor(Math.random() * disponiveis.length)
+    const a = disponiveis[indiceA]
+    const outros = disponiveis.filter((_, indice) => indice !== indiceA)
+    const b = outros[Math.floor(Math.random() * outros.length)]
+    const ausentes = [...this.figuras.values()].filter(figura => figura !== a.figura && figura !== b.figura)
+    const alguem = ausentes.length ? this.nomeDoAgente(ausentes[Math.floor(Math.random() * ausentes.length)].dados) : 'estagiário'
+    const [fala, resposta] = sortearFofoca({ alguem, cafesOutro: this.estatisticaCafe(b.figura.id).cafes })
+
+    const duracaoConversa = DURACAO_FALA_FOFOCA_MS * 2 + 400
+    a.conversarCom(b.figura, duracaoConversa)
+    b.conversarCom(a.figura, duracaoConversa)
+    a.figura.mostrarBalao(`🗣️ ${fala}`, { duracaoMs: DURACAO_FALA_FOFOCA_MS, prioritario: true })
+    setTimeout(() => {
+      if (b.noCafe && this.controladores.get(b.figura.id) === b) b.figura.mostrarBalao(`💬 ${resposta}`, { duracaoMs: DURACAO_FALA_FOFOCA_MS, prioritario: true })
+    }, DURACAO_FALA_FOFOCA_MS + 200)
+  }
+
   focarEm(figuras, duracaoMs) {
     this.camera.adicionarFoco(() => figuras.map(figura => figura.posicao), duracaoMs)
   }
@@ -439,9 +600,13 @@ export class Escritorio {
     const ponteiro = new THREE.Vector2(((evento.clientX - area.left) / area.width) * 2 - 1, -((evento.clientY - area.top) / area.height) * 2 + 1)
     this.raycaster.setFromCamera(ponteiro, this.camera.camera)
     const grupos = [...this.figuras.values()].map(figura => figura.grupo)
-    const [acerto] = this.raycaster.intersectObjects(grupos, true)
+    const [acerto] = this.raycaster.intersectObjects([...grupos, this.cafeteira], true)
     let objeto = acerto?.object
-    while (objeto && !objeto.userData.figura) objeto = objeto.parent
+    while (objeto && !objeto.userData.figura && objeto !== this.cafeteira) objeto = objeto.parent
+    if (objeto && objeto === this.cafeteira) {
+      this.aoClicarCafeteira()
+      return
+    }
     this.aoSelecionar(objeto?.userData.figura?.id ?? null)
   }
 
@@ -514,6 +679,9 @@ export class Escritorio {
     for (const figura of this.figuras.values()) figura.atualizar(segundos)
     this.afastarFigurasSobrepostas(segundos)
     this.atualizarVoosEntrega(agora)
+    this.atualizarFofoca(agora)
+    this.atualizarPocasCafe(agora)
+    this.animarCafeteira(agora)
     this.animarConjuntosMesa(segundos)
     this.animarPorta()
     this.ajustarIluminacao(segundos)

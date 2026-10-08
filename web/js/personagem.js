@@ -4,6 +4,7 @@ import {
   aparenciaDoAgente,
   modeloBraco,
   modeloCabeca,
+  modeloCaneca,
   modeloChapeu,
   modeloEnvelope,
   modeloObjetoNaMao,
@@ -12,6 +13,8 @@ import {
 } from './modelos.js'
 
 const VELOCIDADE_CAMINHADA = 2.4
+const MULTIPLICADOR_CORRIDA = 2.2
+const AMPLITUDE_TREMEDEIRA = 0.6 * (1 / 16)
 const VELOCIDADE_GIRO = 10
 const ALTURA_CABECA = 22 * V
 const ALTURA_ASSENTO = 3 * V
@@ -48,6 +51,8 @@ export class FiguraAgente {
     this.corpo.scale.setScalar(0.001)
     this.tempoAnimacao = Math.random() * 10
     this.travadoAte = 0
+    this.correndoAte = 0
+    this.tremendoAte = 0
     this.objetoCarregado = null
 
     this.elementoPlaca = document.createElement('div')
@@ -93,6 +98,12 @@ export class FiguraAgente {
       this.objetoDoTipo = criarMalha(objetoNaMao, [objetoNaMao.largura / 2, 1, objetoNaMao.profundidade / 2])
       this.maoDireita.add(this.objetoDoTipo)
     }
+    const caneca = modeloCaneca()
+    this.caneca = criarMalha(caneca, [1.5, 0, 1.5])
+    this.caneca.rotation.x = Math.PI / 2
+    this.caneca.position.z = 1 * V
+    this.caneca.visible = false
+    this.maoDireita.add(this.caneca)
   }
 
   atualizarDados(dados) {
@@ -155,6 +166,21 @@ export class FiguraAgente {
 
   definirPose(pose) {
     this.pose = pose
+    this.atualizarObjetosNaMao()
+  }
+
+  atualizarObjetosNaMao() {
+    const comCaneca = this.pose === 'tomandoCafe' && !this.objetoCarregado
+    this.caneca.visible = comCaneca
+    if (this.objetoDoTipo) this.objetoDoTipo.visible = !this.objetoCarregado && !comCaneca
+  }
+
+  correr(ms) {
+    this.correndoAte = performance.now() + ms
+  }
+
+  tremer(ms) {
+    this.tremendoAte = performance.now() + ms
   }
 
   carregar(tipoEntrega) {
@@ -164,7 +190,7 @@ export class FiguraAgente {
     this.objetoCarregado.rotation.x = Math.PI / 2
     this.objetoCarregado.position.z = 1.5 * V
     this.maoDireita.add(this.objetoCarregado)
-    if (this.objetoDoTipo) this.objetoDoTipo.visible = false
+    this.atualizarObjetosNaMao()
   }
 
   soltarCarga() {
@@ -172,7 +198,7 @@ export class FiguraAgente {
     const carga = this.objetoCarregado
     this.maoDireita.remove(carga)
     this.objetoCarregado = null
-    if (this.objetoDoTipo) this.objetoDoTipo.visible = true
+    this.atualizarObjetosNaMao()
     return carga
   }
 
@@ -208,6 +234,7 @@ export class FiguraAgente {
     const escala = aproximar(this.corpo.scale.x, this.escalaAlvo, Math.min(1, segundos * 9))
     this.corpo.scale.setScalar(Math.max(0.001, escala))
     this.animarPose()
+    this.animarTremedeira()
     if (this.balaoExpiraEm > 0 && performance.now() > this.balaoExpiraEm) {
       this.balaoExpiraEm = 0
       this.balaoPrioritarioAte = 0
@@ -216,7 +243,8 @@ export class FiguraAgente {
   }
 
   mover(segundos) {
-    let restante = VELOCIDADE_CAMINHADA * segundos
+    const correndo = performance.now() < this.correndoAte
+    let restante = VELOCIDADE_CAMINHADA * (correndo ? MULTIPLICADOR_CORRIDA : 1) * segundos
     while (restante > 0 && this.caminho.length > 0) {
       const alvo = this.caminho[0]
       const delta = alvo.clone().sub(this.posicao)
@@ -296,6 +324,15 @@ export class FiguraAgente {
       case 'entregando':
         alvo.bracoD = -1.45
         break
+      case 'tomandoCafe': {
+        // Segura a caneca e, a cada ciclo, dá um gole com a cabeça para trás.
+        const golinho = (t + this.id.length) % 4 > 2.9
+        alvo.bracoD = golinho ? -2.5 : -1.3
+        alvo.bracoE = -0.15
+        alvo.cabecaX = golinho ? -0.3 : 0.05
+        alvo.alturaCorpo = Math.sin(t * 2.2) * 0.25 * V
+        break
+      }
       case 'aguardando':
         alvo.bracoD = -2.9 + Math.sin(t * 8) * 0.3
         alvo.cabecaZ = Math.sin(t * 2) * 0.1
@@ -315,6 +352,12 @@ export class FiguraAgente {
     this.cabeca.rotation.x = aproximar(this.cabeca.rotation.x, alvo.cabecaX, fator)
     this.cabeca.rotation.z = aproximar(this.cabeca.rotation.z, alvo.cabecaZ, fator)
     this.corpo.position.y = aproximar(this.corpo.position.y, alvo.alturaCorpo, 0.3)
+  }
+
+  animarTremedeira() {
+    const tremendo = performance.now() < this.tremendoAte
+    this.corpo.position.x = tremendo ? (Math.random() - 0.5) * AMPLITUDE_TREMEDEIRA * 2 : 0
+    this.corpo.position.z = tremendo ? (Math.random() - 0.5) * AMPLITUDE_TREMEDEIRA * 2 : 0
   }
 
   descartar() {

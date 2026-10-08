@@ -195,6 +195,8 @@ html, body {
 .lista-ferramentas li.ativa { color: var(--destaque); }
 .lista-ferramentas li.erro span { color: var(--erro); }
 .lista-ferramentas li.vazio { color: var(--texto-suave); }
+.painel-nota { margin: 4px 0 10px; color: var(--texto-suave); font-size: 12px; line-height: 1.45; }
+.ranking-cafe li { padding: 6px; }
 
 #legenda {
   position: fixed;

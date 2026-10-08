@@ -48,6 +48,10 @@ export const PALETA = {
   papelAmassado: 0xbfbfb5,
   lupaAro: 0xc9a227,
   lupaVidro: 0xbfe6ff,
+  cafeteiraCorpo: 0x2a2c33,
+  cafeEscuro: 0x4a2c17,
+  canecaBranca: 0xf3f1ea,
+  luzCafeteira: 0xff3b30,
 }
 
 const CORES_ROUPA = [0x3f8efc, 0x2ec4b6, 0xe76f51, 0x9b5de5, 0xf4a261, 0x43aa8b, 0xef476f, 0x118ab2, 0x8ac926, 0xff924c]
@@ -350,6 +354,51 @@ export function modeloFolhaPorta() {
   folha.preencher(0, 18, 2, 1, 28, 13, mesclar(PALETA.madeiraClara, 0x000000, 0.12))
   folha.preencher(0, 15, 12, 1, 16, 13, PALETA.lupaAro)
   return folha
+}
+
+// Bancada com a cafeteira: a frente (z) fica virada para dentro da sala.
+export function modeloBancadaCafe() {
+  const bancada = new ModeloVoxel(30, 31, 12)
+  bancada.preencher(0, 0, 0, 29, 13, 11, PALETA.madeiraEscura)
+  bancada.preencher(0, 14, 0, 29, 14, 11, PALETA.madeiraTampo)
+  bancada.preencher(2, 2, 11, 13, 12, 11, PALETA.madeiraClara).preencher(16, 2, 11, 27, 12, 11, PALETA.madeiraClara)
+  bancada.preencher(12, 7, 11, 12, 9, 11, PALETA.lupaAro).preencher(17, 7, 11, 17, 9, 11, PALETA.lupaAro)
+
+  bancada.preencher(3, 15, 1, 12, 16, 8, PALETA.metalEscuro)
+  bancada.preencher(3, 17, 1, 12, 30, 4, PALETA.cafeteiraCorpo)
+  bancada.preencher(3, 27, 1, 12, 30, 8, PALETA.cafeteiraCorpo)
+  bancada.preencher(5, 17, 5, 10, 19, 8, PALETA.cafeEscuro)
+  bancada.preencher(5, 20, 5, 10, 23, 8, PALETA.vidroCeu)
+  bancada.preencher(11, 18, 6, 11, 22, 7, PALETA.cafeteiraCorpo)
+  bancada.preencher(5, 24, 5, 10, 24, 8, PALETA.metalCinza)
+
+  bancada.preencher(17, 15, 6, 19, 17, 8, PALETA.canecaBranca).pintar(18, 17, 7, PALETA.cafeEscuro).pintar(20, 16, 7, PALETA.canecaBranca)
+  bancada.preencher(22, 15, 5, 24, 17, 7, PALETA.telefoneVermelho).pintar(23, 17, 6, PALETA.cafeEscuro).pintar(25, 16, 6, PALETA.telefoneVermelho)
+  bancada.preencher(26, 15, 1, 28, 18, 3, PALETA.vidroCeuClaro).preencher(26, 19, 1, 28, 19, 3, PALETA.metalCinza)
+  return bancada
+}
+
+// Mesmas dimensões da bancada para encaixar no mesmo pivô; só o voxel da luz é pintado.
+export function modeloLuzCafeteira() {
+  return new ModeloVoxel(30, 31, 12).pintar(4, 28, 9, PALETA.luzCafeteira)
+}
+
+export function modeloCaneca() {
+  return new ModeloVoxel(4, 4, 3)
+    .preencher(0, 0, 0, 2, 3, 2, PALETA.canecaBranca)
+    .pintar(1, 3, 1, PALETA.cafeEscuro)
+    .pintar(3, 1, 1, PALETA.canecaBranca)
+    .pintar(3, 2, 1, PALETA.canecaBranca)
+}
+
+export function modeloPocaCafe() {
+  const poca = new ModeloVoxel(12, 1, 10)
+  for (let z = 0; z < 10; z++)
+    for (let x = 0; x < 12; x++) {
+      const distancia = Math.hypot((x - 5.5) * 0.9, z - 4.5) + Math.sin(x * 1.7 + z * 2.3) * 0.8
+      if (distancia < 4.6) poca.pintar(x, 0, z, PALETA.cafeEscuro)
+    }
+  return poca
 }
 
 export function mesclar(corA, corB, proporcaoB) {

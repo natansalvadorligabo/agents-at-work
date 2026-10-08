@@ -9,13 +9,20 @@ const ociosidadeEmSegundos = Number(parametros.get('ociosidade'))
 const escritorio = new Escritorio(document.getElementById('cena'), document.getElementById('camada-html'), {
   ociosidadeMs: ociosidadeEmSegundos > 0 ? ociosidadeEmSegundos * 1000 : undefined,
 })
-const painel = new PainelDetalhes(document.getElementById('painel'), agenteId => dadosPorAgente.get(agenteId))
+const painel = new PainelDetalhes(document.getElementById('painel'), agenteId => dadosPorAgente.get(agenteId), {
+  estatistica: agenteId => {
+    const estatistica = escritorio.estatisticaCafe(agenteId)
+    return { ...estatistica, msNoCafe: escritorio.tempoNoCafe(estatistica) }
+  },
+  ranking: () => escritorio.rankingCafe(),
+})
 const elementoProjeto = document.getElementById('projeto')
 const elementoConexao = document.getElementById('conexao')
 const elementoAvisoEncerrada = document.getElementById('aviso-encerrada')
 const botaoRecentralizar = document.getElementById('recentralizar')
 
 escritorio.aoSelecionar = agenteId => (agenteId ? painel.abrir(agenteId) : painel.fechar())
+escritorio.aoClicarCafeteira = () => painel.abrirRanking()
 escritorio.camera.aoMudarModoManual = manual => botaoRecentralizar.classList.toggle('oculto', !manual)
 botaoRecentralizar.addEventListener('click', () => escritorio.camera.recentralizar())
 
