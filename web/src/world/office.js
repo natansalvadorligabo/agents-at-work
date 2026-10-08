@@ -14,6 +14,7 @@ import { AgentRoster } from './agent-roster.js'
 import { CameraRig } from './camera-rig.js'
 import { separateCrowd } from './crowd.js'
 import { DeliveryFlights } from './delivery-flights.js'
+import { DeskJolts } from './desk-jolts.js'
 import { DeskSlots } from './desk-slots.js'
 import { OfficeDoor, RackLeds, placeFixedFurniture } from './furniture-placement.js'
 import { placeLabels } from './label-placement.js'
@@ -28,9 +29,10 @@ import {
   seatAt,
 } from './layout.js'
 import { OfficeLighting } from './lighting.js'
-import { planRoute } from './navigation.js'
+import { canStandAt, markOccupied, planRoute } from './navigation.js'
 import { PathGrid } from './path-grid.js'
 import { RoomShell } from './room-shell.js'
+import { StationSpots } from './station-spots.js'
 
 /**
  * @typedef {import('#shared/protocol.js').AgentSnapshot} AgentSnapshot
@@ -44,6 +46,8 @@ import { RoomShell } from './room-shell.js'
  * @typedef {import('../lib/three.js').Camera} Camera
  * @typedef {import('../lib/three.js').Object3D} Object3D
  * @typedef {import('./lighting.js').OfficeMood} OfficeMood
+ * @typedef {import('./layout.js').Point2} Point2
+ * @typedef {import('../audio/sound-board.js').SoundPlayer} SoundPlayer
  *
  * The slice of `WebGLRenderer` the office draws with; tests pass a fake.
  * @typedef {object} SceneRenderer
@@ -59,11 +63,13 @@ import { RoomShell } from './room-shell.js'
  * @property {Translator} translator
  * @property {number} idleMs Quiet time after which everyone naps and the lights dim.
  * @property {(message: string, error: unknown) => void} logError
+ * @property {SoundPlayer} sounds
  *
  * @typedef {{ kind: 'agent', agentId: string } | { kind: 'coffee' } | { kind: 'none' }} PickResult
  */
 
 const MAX_FRAME_SECONDS = 0.1
+const CORRIDOR_SPACING = 0.75
 
 /**
  * The whole office scene: room, furniture, coffee corner and every agent, plus the frame loop that moves
@@ -78,6 +84,8 @@ export class Office {
   #roster = new AgentRoster()
   #grid = new PathGrid(MIN_ROOM_WIDTH, ROOM_DEPTH)
   #coffeeSpots = new CoffeeSpots()
+  #deskJolts = new DeskJolts()
+  #stationSpots = new StationSpots()
   #raycaster = new Raycaster()
   #viewport = { width: 1, height: 1 }
   #ended = false
@@ -158,7 +166,10 @@ export class Office {
     this.#scene.add(character.root)
     character.appear()
     if (restored) controller.sitDown()
-    else this.#walkIn(character, controller, snapshot)
+    else {
+      this.#deps.sounds.play('pop')
+      this.#walkIn(character, controller, snapshot)
+    }
     return character
   }
 
@@ -191,6 +202,7 @@ export class Office {
     this.#desks.clear()
     this.#scenery.flights.clear()
     this.#coffeeSpots.clear()
+    this.#stationSpots.clear()
     this.#coffeeStats.abandonOpenBreaks()
     this.#refreshFloorPlan(true)
   }
@@ -242,9 +254,10 @@ export class Office {
   }
 
   #buildScenery() {
-    placeFixedFurniture(this.#scene)
+    const mainDesk = placeFixedFurniture(this.#scene)
     const { clock, random } = this.#deps
     return {
+      mainDesk,
       rackLeds: new RackLeds(this.#scene),
       door: new OfficeDoor(this.#scene),
       coffeeCorner: new CoffeeCorner(this.#scene),
@@ -262,21 +275,29 @@ export class Office {
       this.#scenery,
     ]
     return {
-      planRoute: (position, destination) => planRoute(this.#grid, position, destination),
+      planRoute: (position, destination) => this.#planRoute(position, destination),
       seatOf: agentId => (agentId === MAIN_AGENT_ID ? seatAt(MAIN_DESK) : desks.seatOf(agentId)),
       occupyCoffeeSpot: agentId => this.#coffeeSpots.occupy(agentId),
       releaseCoffeeSpot: agentId => this.#coffeeSpots.release(agentId),
+      occupyStationSpot: (agentId, station) => this.#stationSpots.occupy(agentId, station),
+      releaseStationSpot: agentId => this.#stationSpots.release(agentId),
       recordCoffeeArrival: agent => coffeeStats.arrive(agent),
       recordCoffeeDeparture: agentId => coffeeStats.leave(agentId),
       spillCoffee: (x, z) => scenery.puddles.spill(x, z),
       focusOn: (characters, ms) =>
         this.cameraRig.addFocus(() => characters.map(character => character.position), ms),
-      deliver: (from, to, kind) => scenery.flights.launch(from, to, kind),
+      deliver: async (from, to, kind) => {
+        this.#deps.sounds.play('whoosh')
+        await scenery.flights.launch(from, to, kind)
+        this.#deps.sounds.play('paper')
+      },
       parentCharacter: (parentId, childId) => roster.parentCharacter(parentId, childId),
       isAtCoffee: agentId => roster.get(agentId)?.controller.isAtCoffee ?? false,
       childCountOf: agentId => roster.childCountOf(agentId),
       removeAgent: agentId => this.#removeAgent(agentId),
       isIdle: () => this.#isIdle(),
+      playSound: name => this.#deps.sounds.play(name),
+      punchDesk: agentId => this.#punchDesk(agentId),
     }
   }
 
@@ -293,17 +314,44 @@ export class Office {
   }
 
   /**
+   * Plans around everyone standing or sitting still, except the walker itself.
+   * @param {{ x: number, z: number }} position
+   * @param {Point2} destination
+   * @returns {Point2[]}
+   */
+  #planRoute(position, destination) {
+    const stillOthers = this.#roster
+      .characters()
+      .filter(character => character.position !== position && !character.isWalking)
+      .map(character => character.position)
+    markOccupied(this.#grid, stillOthers)
+    return planRoute(this.#grid, position, destination)
+  }
+
+  /**
+   * New subagents line up in the corridor, one behind the other, instead of spawning on top of each other.
    * @param {Character} character
    * @param {AgentController} controller
    * @param {AgentSnapshot} snapshot
    */
   #walkIn(character, controller, snapshot) {
-    character.placeAt(DOOR_OUTSIDE[0], DOOR_OUTSIDE[1])
+    const waiting = this.#roster
+      .characters()
+      .filter(other => other !== character && other.position.x < 0).length
+    character.placeAt(DOOR_OUTSIDE[0] - waiting * CORRIDOR_SPACING, DOOR_OUTSIDE[1])
     void controller.arrive(snapshot.parentId ?? MAIN_AGENT_ID)
   }
 
   /** @param {string} agentId */
+  #punchDesk(agentId) {
+    const deskSet = agentId === MAIN_AGENT_ID ? this.#scenery.mainDesk : this.#desks.deskSetOf(agentId)
+    if (deskSet) this.#deskJolts.jolt(deskSet, this.#deps.clock.now())
+    this.#deps.sounds.play('punch')
+  }
+
+  /** @param {string} agentId */
   #removeAgent(agentId) {
+    this.#stationSpots.release(agentId)
     if (this.#roster.remove(agentId)) this.#desks.release(agentId)
   }
 
@@ -342,13 +390,15 @@ export class Office {
   #updateAgents(now, seconds) {
     for (const controller of this.#roster.controllers()) controller.update(now)
     for (const character of this.#roster.characters()) character.update(seconds)
-    const standing = this.#roster
+    const members = this.#roster
       .controllers()
-      .filter(controller => !controller.isSeated && !controller.character.isLocked)
-    separateCrowd(
-      standing.map(controller => controller.position),
-      seconds,
-    )
+      .filter(controller => controller.character.isVisible)
+      .map(({ character, isSeated }) => ({
+        position: character.position,
+        fixed: isSeated || character.isLocked,
+        heading: character.waypoints[0] ?? null,
+      }))
+    separateCrowd(members, seconds, (x, z) => canStandAt(this.#grid, x, z))
     this.#scenery.flights.update(now)
   }
 
@@ -369,7 +419,9 @@ export class Office {
   /** @param {number} now @param {number} seconds */
   #updateScenery(now, seconds) {
     this.#desks.animate(seconds)
-    this.#scenery.door.update(this.#roster.characters().map(character => character.position))
+    this.#deskJolts.update(now)
+    const positions = this.#roster.characters().map(character => character.position)
+    if (this.#scenery.door.update(positions)) this.#deps.sounds.play('door')
     this.#lighting.update(seconds, this.#mood())
     this.#scenery.rackLeds.update(now)
   }

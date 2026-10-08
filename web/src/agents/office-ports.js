@@ -5,13 +5,17 @@
  * @typedef {import('#shared/protocol.js').AgentSnapshot} AgentSnapshot
  * @typedef {import('../models/props.js').DeliveryKind} DeliveryKind
  * @typedef {import('../world/layout.js').Point2} Point2
+ * @typedef {import('../world/layout.js').StationName} StationName
  * @typedef {import('./character.js').Character} Character
+ * @typedef {import('../audio/sound-board.js').SoundName} SoundName
  *
  * @typedef {object} OfficePorts
  * @property {(position: { x: number, z: number }, destination: Point2) => Point2[]} planRoute
  * @property {(agentId: string) => Point2} seatOf
  * @property {(agentId: string) => Point2} occupyCoffeeSpot
  * @property {(agentId: string) => void} releaseCoffeeSpot
+ * @property {(agentId: string, station: StationName) => Point2} occupyStationSpot
+ * @property {(agentId: string) => void} releaseStationSpot
  * @property {(agent: AgentSnapshot) => number} recordCoffeeArrival Returns the agent's cup count.
  * @property {(agentId: string) => void} recordCoffeeDeparture
  * @property {(x: number, z: number) => void} spillCoffee
@@ -23,6 +27,8 @@
  * @property {(agentId: string) => number} childCountOf Subagents still in the office, leaving ones included.
  * @property {(agentId: string) => void} removeAgent
  * @property {() => boolean} isIdle Nobody has done anything for a while: time for a nap.
+ * @property {(name: SoundName) => void} playSound
+ * @property {(agentId: string) => void} punchDesk Shakes the agent's desk and monitor, with a bang.
  */
 
 export {}

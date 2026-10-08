@@ -83,6 +83,16 @@ export class DeskSlots {
     return slot === undefined ? DOOR_INSIDE : seatAt(deskSlotTile(slot))
   }
 
+  /**
+   * The agent's desk set (desk, monitor and chair), if it has one.
+   * @param {string} agentId
+   * @returns {Group | undefined}
+   */
+  deskSetOf(agentId) {
+    const slot = this.#slotByAgent.get(agentId)
+    return slot === undefined ? undefined : this.#desks.get(slot)?.set
+  }
+
   /** Removes every desk at once, without animation. */
   clear() {
     for (const desk of this.#desks.values()) desk.set.removeFromParent()

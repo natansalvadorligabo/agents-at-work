@@ -7,6 +7,8 @@ export const ptBr = {
     'header.sessionFallback': 'sessão',
     'header.recenter': '⟲ Recentralizar',
     'header.language': 'Idioma',
+    'header.soundOn': 'Som ligado (clique para silenciar)',
+    'header.soundOff': 'Som desligado (clique para ligar)',
     'notice.sessionEnded': 'Sessão encerrada',
 
     'legend.reading': '📚 leitura',
@@ -36,6 +38,8 @@ export const ptBr = {
     'bubble.failed': '⚠️ Não deu certo',
     'bubble.received': '📩 Recebido',
     'bubble.receivedWithFailure': '📩 Recebido (com falha)',
+    'bubble.grumble': '😤 de novo não…',
+    'bubble.punch': '💢 #@$%&! FALHOU DE NOVO!',
     'bubble.foundBossAtCoffee': '🙄 te achei no café, chefe',
     'tool.delegated': 'Delegou:',
 

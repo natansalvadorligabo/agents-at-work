@@ -10,6 +10,8 @@ import { floorDistance, truncateWithinReach } from '../world/navigation.js'
  * @property {() => void} resolve
  * @property {number} plannedAt
  * @property {{ x: number, z: number } | null} plannedFor
+ * @property {number} closest Closest the walk has come to its target so far.
+ * @property {number} progressAt When it last got meaningfully closer.
  *
  * @typedef {(position: { x: number, z: number }, destination: Point2) => Point2[]} RoutePlanner
  */
@@ -20,9 +22,14 @@ const REPLAN_INTERVAL_MS = 450
 const TARGET_MOVED_DISTANCE = 0.5
 // Beyond this reach the walk is "up to someone", not "onto a spot", so the route is cut short.
 const SHORT_STOP = 0.1
+// With someone standing on the target, the walk ends once it stops getting closer, if it is close enough.
+const STUCK_MS = 900
+const PROGRESS_STEP = 0.05
+const CLOSE_ENOUGH_WHEN_STUCK = 1.1
 
 /**
- * Walks a character to a (possibly moving) target, replanning the route when the target moves away.
+ * Walks a character to a (possibly moving) target, replanning the route when the target moves away. When
+ * the crowd keeps it from getting any closer it settles for "close enough", or looks for another way.
  * @example
  * const walker = new Walker(character, planRoute)
  * await walker.walkTo(() => [3, 4], { stopWithin: 0.85 }, Date.now()) // resolves on arrival
@@ -54,23 +61,59 @@ export class Walker {
    */
   walkTo(target, { stopWithin = DEFAULT_STOP_WITHIN } = {}) {
     return new Promise(resolve => {
-      this.#order = { target, stopWithin, resolve, plannedAt: 0, plannedFor: null }
+      this.#order = {
+        target,
+        stopWithin,
+        resolve,
+        plannedAt: 0,
+        plannedFor: null,
+        closest: Infinity,
+        progressAt: 0,
+      }
     })
   }
 
   /** @param {number} now */
   update(now) {
     const order = this.#order
-    if (!order || this.#character.isLocked) return
+    if (!order) return
+    if (this.#character.isLocked) {
+      order.progressAt = now
+      return
+    }
     const [x, z] = order.target()
     const destination = { x, z }
-    if (
-      floorDistance(this.#character.position, destination) <= Math.max(order.stopWithin, ARRIVAL_TOLERANCE)
-    ) {
-      this.#character.waypoints = []
-      return this.#finish(order)
+    const distance = floorDistance(this.#character.position, destination)
+    if (distance <= Math.max(order.stopWithin, ARRIVAL_TOLERANCE)) return this.#arrive(order)
+    if (this.#isStuck(order, distance, now)) {
+      if (distance <= Math.max(order.stopWithin, CLOSE_ENOUGH_WHEN_STUCK)) return this.#arrive(order)
+      return this.#replan(order, destination, now)
     }
     if (this.#needsNewRoute(order, destination, now)) this.#replan(order, destination, now)
+  }
+
+  /**
+   * @param {WalkOrder} order
+   * @param {number} distance
+   * @param {number} now
+   * @returns {boolean} Whether it has not got closer for a while; the stuck timer restarts.
+   */
+  #isStuck(order, distance, now) {
+    if (!order.progressAt || distance < order.closest - PROGRESS_STEP) {
+      order.closest = distance
+      order.progressAt = now
+      return false
+    }
+    if (now - order.progressAt < STUCK_MS) return false
+    order.closest = distance
+    order.progressAt = now
+    return true
+  }
+
+  /** @param {WalkOrder} order */
+  #arrive(order) {
+    this.#character.waypoints = []
+    this.#finish(order)
   }
 
   /**
