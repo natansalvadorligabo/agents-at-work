@@ -1,4 +1,5 @@
 import { DOOR_INSIDE, DOOR_OUTSIDE, SEATED_FACING } from '../world/layout.js'
+import { SEATED_POSES } from './poses.js'
 
 /**
  * @typedef {import('../core/clock.js').Scheduler} Scheduler
@@ -19,6 +20,9 @@ import { DOOR_INSIDE, DOOR_OUTSIDE, SEATED_FACING } from '../world/layout.js'
  * @property {OfficePorts} ports
  * @property {Scheduler} scheduler
  * @property {Translator} translator
+ *
+ * The parent met for a hand-off; `seat` is where it was sitting, when it got up for it.
+ * @typedef {{ parent: Character, seat: Point2 | null }} Meeting
  */
 
 const TALKING_DISTANCE = 0.85
@@ -28,12 +32,20 @@ const EXTRA_WAIT_AT_COFFEE_MS = 1200
 const SPILL_RUN_MS = 5000
 const SPILL_BUBBLE_MS = 2800
 const SPILL_FOCUS_MS = 2500
+// A seated parent steps this far out from its desk to face whoever brings or takes an envelope.
+const STAND_UP_STEP = 0.3
+const SIT_BACK_MS = 600
+const WIND_UP_MS = 450
+const SLAM_MS = 650
+const FUMING_MS = 1300
+const PUNCH_BUBBLE_MS = WIND_UP_MS + SLAM_MS + FUMING_MS
 
 /**
- * Walks up to the parent agent (following it if it moves) and freezes both for the hand-off.
+ * Walks up to the parent agent (following it if it moves) and freezes both for the hand-off. A seated
+ * parent gets up and steps towards the visitor instead of twisting round in its chair.
  * @param {ScriptContext} context
  * @param {string} parentId
- * @returns {Promise<Character | null>}
+ * @returns {Promise<Meeting | null>}
  */
 async function meetParent({ actor, ports }, parentId) {
   const { character } = actor
@@ -56,7 +68,37 @@ async function meetParent({ actor, ports }, parentId) {
     who.lookAt(other.position.x, other.position.z)
   }
   ports.focusOn([met, character], HANDOFF_FOCUS_MS)
-  return met
+  return { parent: met, seat: standUpFor(met, character) }
+}
+
+/**
+ * Gets a seated character up and walking a step towards a visitor; it ends facing them.
+ * @param {Character} seated
+ * @param {Character} visitor
+ * @returns {Point2 | null} The seat it left, or null when it was not sitting.
+ */
+function standUpFor(seated, visitor) {
+  if (!SEATED_POSES.has(seated.pose)) return null
+  const seat = /** @type {Point2} */ ([seated.position.x, seated.position.z])
+  // Never towards the desk, which is behind the seat (smaller z).
+  const dx = visitor.position.x - seat[0]
+  const dz = Math.max(0, visitor.position.z - seat[1])
+  const length = Math.hypot(dx, dz)
+  const [stepX, stepZ] = length > 0.001 ? [dx / length, dz / length] : [0, 1]
+  seated.setPose('standing')
+  seated.followPath([[seat[0] + stepX * STAND_UP_STEP, seat[1] + stepZ * STAND_UP_STEP]])
+  return seat
+}
+
+/**
+ * After the hand-off, a parent that got up for it walks back to its seat and sits down.
+ * @param {Meeting} meeting
+ */
+function sitBackDown({ parent, seat }) {
+  if (!seat) return
+  parent.lock(SIT_BACK_MS)
+  parent.followPath([seat])
+  parent.face(SEATED_FACING)
 }
 
 /**
@@ -69,8 +111,11 @@ export async function arrivalScript(context, parentId) {
   const { actor, ports } = context
   const { character } = actor
   await actor.walkTo(() => DOOR_INSIDE)
-  const parent = await meetParent(context, parentId)
-  if (parent) await receiveTask(context, parent)
+  const meeting = await meetParent(context, parentId)
+  if (meeting) {
+    await receiveTask(context, meeting.parent)
+    sitBackDown(meeting)
+  }
   await actor.walkTo(() => ports.seatOf(character.id))
   character.dropCarried()
   character.face(SEATED_FACING)
@@ -112,11 +157,15 @@ export async function departureScript(context, parentId, succeeded) {
   })
   character.setPose('standing')
   await scheduler.wait(500)
-  const parent = await meetParent(context, parentId)
-  if (parent) await handOverResult(context, parent, kind)
+  const meeting = await meetParent(context, parentId)
+  if (meeting) {
+    await handOverResult(context, meeting.parent, kind)
+    sitBackDown(meeting)
+  }
   await actor.walkTo(() => DOOR_INSIDE)
   await actor.walkTo(() => DOOR_OUTSIDE)
   character.disappear()
+  ports.playSound('poof')
   await scheduler.wait(400)
   ports.removeAgent(character.id)
 }
@@ -139,11 +188,39 @@ async function handOverResult({ actor, ports, scheduler, translator }, parent, k
   character.setPose('handingOver')
   await scheduler.wait(400)
   await ports.deliver(character, parent, kind)
+  ports.playSound(kind === 'result' ? 'success' : 'failure')
   const received = translator.t(kind === 'result' ? 'bubble.received' : 'bubble.receivedWithFailure')
   parent.bubble.show(received, { durationMs: 1600, priority: true })
   character.setPose('standing')
   scheduler.after(1800, () => parent.dropCarried())
   await scheduler.wait(700)
+}
+
+/**
+ * Another tool failed right after the last one: the agent goes back to its desk if it is not there, raises
+ * its fist, punches the desk (which shakes, monitor and all) and sits there fuming.
+ * @param {ScriptContext} context
+ * @example scripts.enqueue(() => deskPunchScript(context))
+ */
+export async function deskPunchScript({ actor, ports, scheduler, translator }) {
+  const { character } = actor
+  character.bubble.show(translator.t('bubble.punch'), { durationMs: PUNCH_BUBBLE_MS, priority: true })
+  const [x, z] = ports.seatOf(character.id)
+  if (Math.hypot(character.position.x - x, character.position.z - z) > 0.1) {
+    character.setPose('standing')
+    character.run(PUNCH_BUBBLE_MS)
+    await actor.walkTo(() => [x, z])
+  }
+  character.face(SEATED_FACING)
+  character.setPose('windingUp')
+  await scheduler.wait(WIND_UP_MS)
+  character.setPose('slamming')
+  character.shake(SLAM_MS)
+  ports.punchDesk(character.id)
+  await scheduler.wait(SLAM_MS)
+  character.setPose('fuming')
+  await scheduler.wait(FUMING_MS)
+  actor.settleAtDesk()
 }
 
 /**
@@ -157,6 +234,7 @@ export async function spillScript({ actor, ports, scheduler, translator }) {
   character.setPose('standing')
   character.bubble.show(translator.t('coffee.spilled'), { durationMs: SPILL_BUBBLE_MS, priority: true })
   ports.spillCoffee(x + 0.2, z)
+  ports.playSound('splash')
   ports.focusOn([character], SPILL_FOCUS_MS)
   await scheduler.wait(600)
   character.run(SPILL_RUN_MS)

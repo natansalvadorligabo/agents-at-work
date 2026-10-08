@@ -17,8 +17,11 @@ const GLOBE_TABLE_LEG_CORNERS = /** @type {const} */ ([
 ])
 const RACK_DRAWER_ROWS = [3, 8, 13, 18, 23, 28]
 
+/** Where the monitor stands on the desk, in the desk model's voxels: it wobbles around this point. */
+export const MONITOR_BASE_VOXEL = /** @type {const} */ ([14, 12, 3])
+
 /**
- * A desk with monitor, keyboard, mouse and a coffee cup, 28×20×14 voxels.
+ * A desk with keyboard, mouse and a coffee cup, 28×20×14 voxels; the monitor is a separate model.
  * @returns {VoxelModel}
  * @example createVoxelMesh(deskModel(), [14, 0, 7])
  */
@@ -29,16 +32,25 @@ export function deskModel() {
     .fill(2, 3, 0, 25, 9, 0, PALETTE.lightWood)
   for (const [x, z] of DESK_LEG_CORNERS) desk.fill(x, 0, z, x + 1, 9, z + 1, PALETTE.darkWood)
   return desk
+    .fill(9, 12, 8, 18, 12, 10, PALETTE.keyboard)
+    .fill(21, 12, 8, 22, 12, 10, PALETTE.greyMetal)
+    .fill(2, 12, 3, 4, 14, 5, 0xe9e2d0)
+    .fill(3, 14, 4, 3, 15, 4, 0x6e4a2c)
+}
+
+/**
+ * The monitor on its stand, in the same 28×20×14 frame as the desk so the two line up.
+ * @returns {VoxelModel}
+ * @example createVoxelMesh(monitorModel(), [...MONITOR_BASE_VOXEL])
+ */
+export function monitorModel() {
+  return new VoxelModel(28, 20, 14)
     .fill(9, 12, 2, 18, 12, 4, PALETTE.darkMetal)
     .fill(13, 13, 3, 14, 14, 3, PALETTE.darkMetal)
     .fill(7, 14, 2, 20, 19, 3, PALETTE.monitorFrame)
     .fill(8, 15, 3, 19, 18, 3, PALETTE.monitorScreen)
     .fill(9, 17, 3, 14, 17, 3, 0xbff6ff)
     .fill(9, 16, 3, 16, 16, 3, 0x8fe6f5)
-    .fill(9, 12, 8, 18, 12, 10, PALETTE.keyboard)
-    .fill(21, 12, 8, 22, 12, 10, PALETTE.greyMetal)
-    .fill(2, 12, 3, 4, 14, 5, 0xe9e2d0)
-    .fill(3, 14, 4, 3, 15, 4, 0x6e4a2c)
 }
 
 /**

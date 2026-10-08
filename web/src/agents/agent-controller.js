@@ -2,8 +2,9 @@ import { CoffeeBreak } from '../coffee/coffee-break.js'
 import { CoffeeReasoner } from '../coffee/coffee-rules.js'
 import { COFFEE_FACING, SEATED_FACING, STATIONS } from '../world/layout.js'
 import { newestActiveTool, planActivity } from './activity-planner.js'
-import { arrivalScript, departureScript, spillScript } from './agent-scripts.js'
+import { arrivalScript, departureScript, deskPunchScript, spillScript } from './agent-scripts.js'
 import { ScriptQueue } from './script-queue.js'
+import { Temper } from './temper.js'
 import { Walker } from './walker.js'
 
 /**
@@ -17,6 +18,8 @@ import { Walker } from './walker.js'
  * @typedef {import('./character.js').Character} Character
  * @typedef {import('./office-ports.js').OfficePorts} OfficePorts
  * @typedef {import('./speech-bubble.js').BubbleOptions} BubbleOptions
+ * @typedef {import('./poses.js').PoseName} PoseName
+ * @typedef {import('../audio/sound-board.js').SoundName} SoundName
  *
  * @typedef {object} ControllerDependencies
  * @property {Character} character
@@ -26,6 +29,8 @@ import { Walker } from './walker.js'
  * @property {Translator} translator
  * @property {(message: string, error: unknown) => void} logError
  */
+
+const GRUMBLE_MS = 1800
 
 /**
  * The brain of one agent on screen: turns its live snapshot into where to walk, how to look and what to say,
@@ -50,6 +55,7 @@ export class AgentController {
   #scripts
   #reasoner
   #coffee
+  #temper = new Temper()
   #scriptContext
 
   /** @param {ControllerDependencies} dependencies */
@@ -116,6 +122,7 @@ export class AgentController {
    */
   say(text, options) {
     this.character.bubble.show(text, options)
+    this.#ports.playSound('gossip')
   }
 
   /** @param {number} now */
@@ -150,14 +157,43 @@ export class AgentController {
   }
 
   #updateFreeActivity() {
+    const now = this.#clock.now()
+    const visit = this.#coffee.visit
+    const coffeeToolId = visit?.reason === 'compiling' ? visit.toolUseId : null
     if (this.#coffee.commandFailedHere(this.snapshot)) {
       void this.#scripts.enqueue(() => spillScript(this.#scriptContext))
       return
     }
-    const now = this.#clock.now()
+    if (this.#loseTemper(now, coffeeToolId)) return
     this.#trackThinking(now)
     const coffeeVisit = this.#decideCoffee(now)
     this.#follow(planActivity({ ...this.#activityInput(now), coffeeVisit }))
+  }
+
+  /**
+   * @param {number} now
+   * @param {string | null} coffeeToolId
+   * @returns {boolean} Whether a desk punch took over.
+   */
+  #loseTemper(now, coffeeToolId) {
+    const outburst = this.#temper.react({
+      snapshot: this.snapshot,
+      now,
+      atCoffee: this.isAtCoffee,
+      coffeeToolId,
+    })
+    if (outburst === 'punch') {
+      void this.#scripts.enqueue(() => deskPunchScript(this.#scriptContext))
+      return true
+    }
+    if (outburst === 'grumble') {
+      this.character.bubble.show(this.#translator.t('bubble.grumble'), {
+        durationMs: GRUMBLE_MS,
+        priority: true,
+      })
+      this.#ports.playSound('grumble')
+    }
+    return false
   }
 
   /**
@@ -199,6 +235,8 @@ export class AgentController {
     if (plan.target !== this.#currentTarget) this.#headTo(plan.target)
     if (this.#arrived) this.#faceWhileThere(plan.target)
     this.character.setPose(this.#arrived ? plan.pose : 'standing')
+    const ongoing = this.#arrived ? ONGOING_SOUNDS[plan.pose] : undefined
+    if (ongoing) this.#ports.playSound(ongoing)
   }
 
   /** @param {number} now */
@@ -210,6 +248,7 @@ export class AgentController {
   /** @param {TargetName} target */
   #headTo(target) {
     if (this.#currentTarget === 'coffee') this.#coffee.leave()
+    if (target === 'desk' || target === 'coffee') this.#ports.releaseStationSpot(this.id)
     this.#currentTarget = target
     this.#arrived = false
     const point = this.#pointOf(target)
@@ -222,6 +261,8 @@ export class AgentController {
     this.#arrived = true
     this.character.face(facingAt(target))
     if (target === 'coffee') this.#coffee.arrive()
+    const sound = ARRIVAL_SOUNDS[target]
+    if (sound) this.#ports.playSound(sound)
   }
 
   /** @param {TargetName} target */
@@ -238,7 +279,7 @@ export class AgentController {
   #pointOf(target) {
     if (target === 'desk') return this.#ports.seatOf(this.id)
     if (target === 'coffee') return this.#ports.occupyCoffeeSpot(this.id)
-    return STATIONS[target].point
+    return this.#ports.occupyStationSpot(this.id, target)
   }
 
   /** @param {TargetName} target */
@@ -250,9 +291,29 @@ export class AgentController {
   // A script takes over: leave the coffee machine (closing the break) and forget the current target.
   #interruptFreeActivity() {
     if (this.#currentTarget === 'coffee') this.#coffee.leave()
+    this.#ports.releaseStationSpot(this.id)
     this.#currentTarget = null
   }
 }
+
+/**
+ * What an agent's arrival at a place sounds like.
+ * @type {Readonly<Partial<Record<TargetName, SoundName>>>}
+ */
+const ARRIVAL_SOUNDS = Object.freeze({
+  bookshelf: 'pageFlip',
+  whiteboard: 'marker',
+  rack: 'serverBeep',
+  globe: 'globeSpin',
+  phone: 'phoneRing',
+  coffee: 'brew',
+})
+
+/**
+ * Sounds that keep going while an agent holds a pose; the sound board spaces the repeats out.
+ * @type {Readonly<Partial<Record<PoseName, SoundName>>>}
+ */
+const ONGOING_SOUNDS = Object.freeze({ typing: 'typing', napping: 'snore', writingOnBoard: 'marker' })
 
 /**
  * @param {TargetName} target

@@ -2,6 +2,8 @@
 // and hands them to everything else.
 import { systemIntervalTimer } from '#shared/interval-timer.js'
 import { SessionSync } from './app/session-sync.js'
+import { SoundBoard } from './audio/sound-board.js'
+import { SoundPreference } from './audio/sound-preference.js'
 import { listenToStream, streamUrl } from './app/stream-client.js'
 import { systemClock, systemRandom, systemScheduler } from './core/clock.js'
 import { LocalePreference } from './i18n/locale-preference.js'
@@ -11,6 +13,7 @@ import { Translator, detectLocale } from './i18n/translator.js'
 import { DetailsPanel } from './ui/details-panel.js'
 import { HeaderView } from './ui/header-view.js'
 import { LanguageSwitcher } from './ui/language-switcher.js'
+import { SoundToggle } from './ui/sound-toggle.js'
 import { applyStaticTranslations } from './ui/static-text.js'
 import { CameraInput } from './world/camera-input.js'
 import { DomLabelLayer } from './world/dom-label-layer.js'
@@ -60,10 +63,32 @@ function idleMsFrom(params) {
 }
 
 /**
+ * Browsers keep audio silent until the viewer interacts with the page; the first click or key unlocks it.
+ * @param {Translator} translator
+ */
+function createSounds(translator) {
+  const sounds = new SoundBoard({
+    createContext: () => new AudioContext(),
+    clock: systemClock,
+    random: systemRandom,
+  })
+  new SoundToggle({
+    button: byId('sound'),
+    sounds,
+    preference: new SoundPreference(browserStorage()),
+    translator,
+  })
+  const unlock = () => sounds.unlock()
+  for (const type of ['pointerdown', 'keydown']) window.addEventListener(type, unlock, { passive: true })
+  return sounds
+}
+
+/**
  * @param {Translator} translator
  * @param {URLSearchParams} params
+ * @param {SoundBoard} sounds
  */
-function createOffice(translator, params) {
+function createOffice(translator, params, sounds) {
   const container = byId('scene')
   const renderer = createWebGlRenderer(container, window.devicePixelRatio)
   const office = new Office({
@@ -75,6 +100,7 @@ function createOffice(translator, params) {
     translator,
     idleMs: idleMsFrom(params),
     logError: (message, error) => console.error(message, error),
+    sounds,
   })
   const fit = () => office.resize(container.clientWidth, container.clientHeight)
   window.addEventListener('resize', fit)
@@ -146,7 +172,7 @@ function connectStream(sync, header) {
 function start() {
   const params = new URLSearchParams(location.search)
   const translator = createTranslator(new LocalePreference(browserStorage()))
-  const { office, canvas } = createOffice(translator, params)
+  const { office, canvas } = createOffice(translator, params, createSounds(translator))
   const header = createHeader(office, translator)
   // The panel reads snapshots from the sync, and the sync tells the panel what changed: break the cycle.
   const panelRef = { current: /** @type {DetailsPanel | null} */ (null) }

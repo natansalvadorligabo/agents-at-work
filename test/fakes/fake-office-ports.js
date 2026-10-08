@@ -1,7 +1,9 @@
+import { STATIONS } from '../../web/src/world/layout.js'
 import { planRoute } from '../../web/src/world/navigation.js'
 import { PathGrid } from '../../web/src/world/path-grid.js'
 
 /** @typedef {import('../../web/src/agents/character.js').Character} Character */
+/** @typedef {import('../../web/src/world/layout.js').StationName} StationName */
 
 /**
  * OfficePorts backed by plain fields, recording what the controller asked for.
@@ -25,6 +27,8 @@ export class FakeOfficePorts {
   characters = new Map()
   /** @type {Set<string>} */
   atCoffee = new Set()
+  /** @type {string[]} */
+  sounds = []
   childCount = 0
   idle = false
 
@@ -37,6 +41,9 @@ export class FakeOfficePorts {
     if (!this.coffeeOccupants.includes(agentId)) this.coffeeOccupants.push(agentId)
     return /** @type {[number, number]} */ ([1, 4.45 + this.coffeeOccupants.indexOf(agentId)])
   }
+  occupyStationSpot = (/** @type {string} */ _agentId, /** @type {StationName} */ station) =>
+    STATIONS[station].point
+  releaseStationSpot = () => {}
   releaseCoffeeSpot = (/** @type {string} */ agentId) => {
     this.coffeeOccupants = this.coffeeOccupants.filter(id => id !== agentId)
   }
@@ -59,4 +66,8 @@ export class FakeOfficePorts {
   childCountOf = () => this.childCount
   removeAgent = (/** @type {string} */ agentId) => void this.removed.push(agentId)
   isIdle = () => this.idle
+  /** @type {string[]} */
+  punchedDesks = []
+  punchDesk = (/** @type {string} */ agentId) => void this.punchedDesks.push(agentId)
+  playSound = (/** @type {string} */ name) => void this.sounds.push(name)
 }

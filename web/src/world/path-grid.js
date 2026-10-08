@@ -14,7 +14,8 @@ const NEIGHBOR_OFFSETS = [
 ]
 
 /**
- * Walkability grid of the office floor with A* path finding.
+ * Walkability grid of the office floor with A* path finding. Besides hard blocks (furniture), cells can carry
+ * an extra cost (someone standing or sitting there) so routes go around people when there is room to.
  * @example
  * const grid = new PathGrid(14, 9)
  * grid.block(3, 3)
@@ -29,6 +30,7 @@ export class PathGrid {
     this.width = width
     this.depth = depth
     this.blocked = new Uint8Array(width * depth)
+    this.penalty = new Float32Array(width * depth)
   }
 
   /**
@@ -40,6 +42,7 @@ export class PathGrid {
     this.width = width
     this.depth = depth
     this.blocked = new Uint8Array(width * depth)
+    this.penalty = new Float32Array(width * depth)
   }
 
   clearBlocks() {
@@ -49,6 +52,27 @@ export class PathGrid {
   /** @param {number} x @param {number} z */
   block(x, z) {
     if (this.isInside(x, z)) this.blocked[this.keyOf(x, z)] = 1
+  }
+
+  clearPenalties() {
+    this.penalty.fill(0)
+  }
+
+  /**
+   * Makes walking through a cell more expensive; it stays walkable.
+   * @param {number} x
+   * @param {number} z
+   * @param {number} cost Extra cost, in tiles walked.
+   */
+  addPenalty(x, z, cost) {
+    if (!this.isInside(x, z)) return
+    const key = this.keyOf(x, z)
+    this.penalty[key] = (this.penalty[key] ?? 0) + cost
+  }
+
+  /** @param {number} x @param {number} z @returns {number} */
+  penaltyOf(x, z) {
+    return this.isInside(x, z) ? (this.penalty[this.keyOf(x, z)] ?? 0) : 0
   }
 
   /** @param {number} x @param {number} z @returns {boolean} */
@@ -96,7 +120,11 @@ export class PathGrid {
     return NEIGHBOR_OFFSETS.filter(([dx = 0, dz = 0]) => {
       if (!this.isFree(x + dx, z + dz)) return false
       return dx === 0 || dz === 0 || (this.isFree(x + dx, z) && this.isFree(x, z + dz))
-    }).map(([dx = 0, dz = 0, step = 1]) => ({ x: x + dx, z: z + dz, step }))
+    }).map(([dx = 0, dz = 0, step = 1]) => ({
+      x: x + dx,
+      z: z + dz,
+      step: step + this.penaltyOf(x + dx, z + dz),
+    }))
   }
 
   /**

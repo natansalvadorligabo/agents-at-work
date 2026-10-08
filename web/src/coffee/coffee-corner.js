@@ -22,7 +22,7 @@ const IDLE_STEAM_OPACITY = 0.35
 const BUSY_STEAM_OPACITY = 0.85
 
 /**
- * The coffee counter against the left wall: its power light blinks and the jug steams harder while someone
+ * The coffee counter against the back wall: its power light blinks and the jug steams harder while someone
  * is on a break. Clicking it opens the coffee ranking.
  * @example
  * const corner = new CoffeeCorner(scene)
@@ -39,7 +39,6 @@ export class CoffeeCorner {
     /** The object picked by clicks. */
     this.counter = createVoxelMesh(coffeeBarModel(), pivot)
     this.counter.position.set(COFFEE_BAR_POSITION.x, 0, COFFEE_BAR_POSITION.z)
-    this.counter.rotation.y = Math.PI / 2
     this.light = createGlowingVoxelMesh(coffeeMachineLightModel(), pivot)
     this.counter.add(this.light)
     // In the counter's own (rotated) frame, so the steam follows the jug.

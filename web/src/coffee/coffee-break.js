@@ -54,6 +54,7 @@ export class CoffeeBreak {
     const cups = this.#ports.recordCoffeeArrival(this.#character.snapshot)
     if (cups < CUPS_TO_FEEL_GREAT) return
     this.#character.shake(SHAKE_DURATION_MS)
+    this.#ports.playSound('jitter')
     const text = this.#translator.t('coffee.feelingGreat', { count: cups })
     this.#character.bubble.show(text, { durationMs: FEELING_GREAT_BUBBLE_MS, priority: true })
   }

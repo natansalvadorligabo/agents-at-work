@@ -7,6 +7,8 @@ export const en = {
     'header.sessionFallback': 'session',
     'header.recenter': '⟲ Recenter',
     'header.language': 'Language',
+    'header.soundOn': 'Sound on (click to mute)',
+    'header.soundOff': 'Sound off (click to unmute)',
     'notice.sessionEnded': 'Session ended',
 
     'legend.reading': '📚 reading',
@@ -36,6 +38,8 @@ export const en = {
     'bubble.failed': "⚠️ That didn't work",
     'bubble.received': '📩 Received',
     'bubble.receivedWithFailure': '📩 Received (with a failure)',
+    'bubble.grumble': '😤 not again…',
+    'bubble.punch': '💢 #@$%&! FAILED AGAIN!',
     'bubble.foundBossAtCoffee': '🙄 found you at the coffee machine, boss',
     'tool.delegated': 'Delegated:',
 

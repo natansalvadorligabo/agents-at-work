@@ -21,20 +21,22 @@ export const MAIN_DESK = Object.freeze({ x: 1, z: 3 })
 /** Seated agents face the back wall (their monitor). */
 export const SEATED_FACING = Math.PI
 
-/** Where the coffee counter stands, against the left wall. */
-export const COFFEE_BAR_POSITION = Object.freeze({ x: 0.38, z: 5.0 })
+/** Where the coffee counter stands: against the back wall, in the corner farthest from the boss's desk. */
+export const COFFEE_BAR_POSITION = Object.freeze({ x: 12.95, z: 0.4 })
 
-/** Standing agents at the counter face the left wall. */
-export const COFFEE_FACING = -Math.PI / 2
+/** Standing agents at the counter face the back wall. */
+export const COFFEE_FACING = Math.PI
 
-/** Standing spots in front of the counter; latecomers form a second ring next to them. */
+/**
+ * Standing spots in front of the counter, about a body and a half apart so a group at the coffee machine
+ * does not bunch up; latecomers form a second ring further along the back wall.
+ */
 export const COFFEE_SPOTS = /** @type {readonly Point2[]} */ ([
-  [1.0, 4.45],
-  [1.0, 5.35],
-  [1.65, 4.9],
-  [1.65, 5.8],
-  [2.2, 5.35],
-  [2.2, 6.2],
+  [12.4, 1.3],
+  [13.4, 1.35],
+  [11.85, 2.25],
+  [12.9, 2.3],
+  [13.8, 2.6],
 ])
 
 /** @type {Readonly<Record<StationName, Station>>} */
@@ -46,7 +48,7 @@ export const STATIONS = Object.freeze({
   phone: { point: [10.5, 1.4], facing: Math.PI },
 })
 
-// Tiles under furniture along the back wall, the plant by the door and the coffee counter.
+// Tiles under furniture along the back wall (the coffee counter included) and the plants on the left wall.
 const FIXED_BLOCKED_TILES = /** @type {readonly Point2[]} */ ([
   [0, 0],
   [1, 0],
@@ -56,9 +58,9 @@ const FIXED_BLOCKED_TILES = /** @type {readonly Point2[]} */ ([
   [8, 0],
   [10, 0],
   [12, 0],
+  [13, 0],
   [0, 8],
   [0, 4],
-  [0, 5],
 ])
 
 export const DOOR_INSIDE = /** @type {Point2} */ ([0.5, DOOR_ROW + 0.5])

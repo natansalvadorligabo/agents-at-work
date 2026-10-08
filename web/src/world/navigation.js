@@ -1,5 +1,8 @@
 import { DOOR_INSIDE, isInsideRoom } from './layout.js'
 
+const WALL_CLEARANCE = 0.3
+const DOOR_HALF_WIDTH = 0.4
+
 /**
  * @typedef {import('./layout.js').Point2} Point2
  * @typedef {import('./path-grid.js').PathGrid} PathGrid
@@ -29,6 +32,44 @@ export function planRoute(grid, position, destination) {
   waypoints.push(insideTarget)
   if (insideTarget !== destination) waypoints.push(destination)
   return waypoints
+}
+
+// Walking past someone costs as much as a detour of this many tiles, so routes go around people.
+const OCCUPIED_COST = 4
+// Cells whose center is this close to someone count as taken by them (a seat on a tile edge takes two).
+const OCCUPIED_REACH = 0.75
+
+/**
+ * Marks the cells taken by people standing or sitting still, replacing the previous marks.
+ * @param {PathGrid} grid
+ * @param {Iterable<FloorPosition>} positions
+ * @example markOccupied(grid, [{ x: 2, z: 4.3 }]) // the seat's two cells now cost more to cross
+ */
+export function markOccupied(grid, positions) {
+  grid.clearPenalties()
+  for (const { x, z } of positions) {
+    const [cellX, cellZ] = toCell([x, z])
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const [cx, cz] = [cellX + dx, cellZ + dz]
+        if (Math.hypot(cx + 0.5 - x, cz + 0.5 - z) <= OCCUPIED_REACH) grid.addPenalty(cx, cz, OCCUPIED_COST)
+      }
+    }
+  }
+}
+
+/**
+ * Whether a body can stand at a floor point: on a free tile inside the room, or in the corridor outside,
+ * but never inside the left wall except through the door.
+ * @param {PathGrid} grid
+ * @param {number} x
+ * @param {number} z
+ * @returns {boolean}
+ * @example canStandAt(grid, -1.1, 6.5) // true: the corridor outside the door
+ */
+export function canStandAt(grid, x, z) {
+  if (isInsideRoom(x, z, grid.width)) return grid.isFree(Math.floor(x), Math.floor(z))
+  return x <= -WALL_CLEARANCE || Math.abs(z - DOOR_INSIDE[1]) < DOOR_HALF_WIDTH
 }
 
 /**

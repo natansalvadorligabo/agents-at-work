@@ -1,11 +1,13 @@
 import { Group } from '../lib/three.js'
 import {
+  MONITOR_BASE_VOXEL,
   bookshelfModel,
   chairModel,
   deskModel,
   doorFrameModel,
   doorLeafModel,
   globeTableModel,
+  monitorModel,
   phoneTableModel,
   pottedPlantModel,
   rackLedsModel,
@@ -27,6 +29,9 @@ const LED_BLINK_PERIOD_MS = 420
 const DOOR_OPEN_ANGLE = -1.35
 const DOOR_OPENS_WITHIN = 1.3
 const DOOR_SWING_FACTOR = 0.15
+const DESK_PIVOT = /** @type {const} */ ([14, 0, 7])
+/** Names of the parts of a desk set that move on their own (see DeskJolts). */
+export const DESK_PART = Object.freeze({ desk: 'desk', monitor: 'monitor' })
 
 /**
  * Places a voxel model on the floor (or at a height) and adds it to the scene.
@@ -47,6 +52,7 @@ export function placeModel(scene, model, [x, y, z], rotationY = 0) {
 
 /**
  * A desk with its chair, pivoted so it can pop in by scaling. Starts collapsed; animate `scale` to show it.
+ * The desk and its monitor are named parts (DESK_PART) so a punch can shake them.
  * @returns {Group}
  * @example scene.add(createDeskSet())
  */
@@ -54,7 +60,19 @@ export function createDeskSet() {
   const set = new Group()
   const chair = createVoxelMesh(chairModel(), [5, 0, 5])
   chair.position.set(0, 0, 0.95)
-  set.add(createVoxelMesh(deskModel(), [14, 0, 7]), chair)
+  const desk = createVoxelMesh(deskModel(), [...DESK_PIVOT])
+  desk.name = DESK_PART.desk
+  const monitor = new Group()
+  monitor.name = DESK_PART.monitor
+  const [x, y, z] = MONITOR_BASE_VOXEL
+  monitor.position.set(
+    (x - DESK_PIVOT[0]) * VOXEL_SIZE,
+    (y - DESK_PIVOT[1]) * VOXEL_SIZE,
+    (z - DESK_PIVOT[2]) * VOXEL_SIZE,
+  )
+  monitor.add(createVoxelMesh(monitorModel(), [...MONITOR_BASE_VOXEL]))
+  desk.add(monitor)
+  set.add(desk, chair)
   set.scale.setScalar(0.001)
   return set
 }
@@ -91,19 +109,28 @@ export class OfficeDoor {
     scene.add(this.leaf)
   }
 
-  /** @param {Iterable<{ x: number, z: number }>} positions */
+  #open = false
+
+  /**
+   * @param {Iterable<{ x: number, z: number }>} positions
+   * @returns {boolean} Whether the door just started to open.
+   */
   update(positions) {
     const someoneNear = [...positions].some(
       ({ x, z }) => Math.hypot(x + 0.2, z - (DOOR_ROW + 0.5)) < DOOR_OPENS_WITHIN,
     )
     const target = someoneNear ? DOOR_OPEN_ANGLE : 0
     this.leaf.rotation.y += (target - this.leaf.rotation.y) * DOOR_SWING_FACTOR
+    const opened = someoneNear && !this.#open
+    this.#open = someoneNear
+    return opened
   }
 }
 
 /**
  * Everything that never moves: stations along the back wall, plants, window and the main agent's desk.
  * @param {Scene} scene
+ * @returns {Group} The main agent's desk set.
  * @example placeFixedFurniture(scene)
  */
 export function placeFixedFurniture(scene) {
@@ -113,10 +140,11 @@ export function placeFixedFurniture(scene) {
   placeModel(scene, windowModel(), [8.5, 0.9, 0.02])
   placeModel(scene, globeTableModel(), [8.5, 0, 0.5])
   placeModel(scene, phoneTableModel(), [10.5, 0, 0.42])
-  placeModel(scene, pottedPlantModel(), [12.5, 0, 0.45])
+  placeModel(scene, pottedPlantModel(), [0.45, 0, 4.5])
   placeModel(scene, pottedPlantModel(), [0.5, 0, 8.45])
   const mainDesk = createDeskSet()
   mainDesk.position.set(MAIN_DESK.x + 1, 0, MAIN_DESK.z + 0.5)
   mainDesk.scale.setScalar(1)
   scene.add(mainDesk)
+  return mainDesk
 }

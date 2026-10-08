@@ -2,7 +2,7 @@ import { VOXEL_SIZE as V } from '../voxel/voxel-mesh.js'
 
 /**
  * @typedef {'standing' | 'walking' | 'seated' | 'typing' | 'thinking' | 'waitingSeated' | 'napping' | 'operating'
- *   | 'writingOnBoard' | 'handingOver' | 'drinkingCoffee'} PoseName
+ *   | 'writingOnBoard' | 'handingOver' | 'drinkingCoffee' | 'windingUp' | 'slamming' | 'fuming'} PoseName
  *
  * Target joint angles (radians) and body offsets (world units) for one animation frame.
  * @typedef {object} JointTargets
@@ -110,6 +110,22 @@ const POSES = {
       bodyLift: Math.sin(time * 2.2) * 0.25 * V,
     }
   },
+  // The desk punch, seated: the fist goes up, comes down on the desk, then the agent sits there fuming.
+  windingUp: ({ time }) => ({
+    ...SITTING,
+    rightArm: -2.9 + Math.sin(time * 30) * 0.06,
+    rightArmSpread: 0.25,
+    leftArm: -0.7,
+    headPitch: -0.2,
+  }),
+  slamming: () => ({ ...SITTING, rightArm: -1.25, leftArm: -0.7, headPitch: 0.3 }),
+  fuming: ({ time }) => ({
+    ...SITTING,
+    leftArm: -1.0,
+    rightArm: -1.0,
+    headPitch: 0.15,
+    headRoll: Math.sin(time * 14) * 0.12,
+  }),
 }
 
 /**
@@ -125,5 +141,14 @@ export function poseTargets(pose, context) {
 
 /** Poses in which the character is sitting on its chair. */
 export const SEATED_POSES = new Set(
-  /** @type {PoseName[]} */ (['seated', 'typing', 'thinking', 'waitingSeated', 'napping']),
+  /** @type {PoseName[]} */ ([
+    'seated',
+    'typing',
+    'thinking',
+    'waitingSeated',
+    'napping',
+    'windingUp',
+    'slamming',
+    'fuming',
+  ]),
 )

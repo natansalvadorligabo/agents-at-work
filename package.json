@@ -20,7 +20,8 @@
     "format:check": "prettier --check .",
     "check": "npm run format:check && npm run typecheck && npm test",
     "demo:coffee": "node tools/simulate/coffee-demo.js",
-    "demo:gossip": "node tools/simulate/gossip-demo.js"
+    "demo:gossip": "node tools/simulate/gossip-demo.js",
+    "demo:crowd": "node tools/simulate/crowd-demo.js"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
