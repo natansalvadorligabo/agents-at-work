@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Escritório de Agentes</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="estilo.css">
+  <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
+</head>
+<body>
+  <div id="cena"></div>
+  <div id="camada-html"></div>
+
+  <header id="barra">
+    <div class="marca">
+      <span id="conexao" class="indicador-conexao" title="Conexão com a sessão"></span>
+      <strong>Escritório de Agentes</strong>
+      <span class="placa-porta" id="projeto">aguardando sessão</span>
+    </div>
+    <button id="recentralizar" class="botao oculto">⟲ Recentralizar</button>
+  </header>
+
+  <div id="aviso-encerrada" class="aviso oculto">Sessão encerrada</div>
+
+  <aside id="painel" aria-live="polite"></aside>
+
+  <footer id="legenda">
+    <span>📚 leitura</span><span>⌨️ edição</span><span>🖥️ terminal</span><span>🌐 web</span><span>📞 MCP</span><span>📝 planejamento</span><span>💭 pensando</span>
+    <span class="dica">arraste para girar · botão direito para mover · roda para zoom · clique num agente para detalhes</span>
+  </footer>
+
+  <script type="module" src="js/principal.js"></script>
+</body>
+</html>
