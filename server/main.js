@@ -2,7 +2,9 @@ import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_PORT } from '#shared/protocol.js'
+import { ControlKeys } from './control-keys.js'
 import { createRequestListener } from './http-app.js'
+import { PermissionDesk, systemTimeouts } from './permission-desk.js'
 import { SessionStore } from './session-store.js'
 import { StaticFiles } from './static-files.js'
 import { StreamHub } from './stream-hub.js'
@@ -23,7 +25,10 @@ const staticFiles = new StaticFiles({
 const listener = createRequestListener({
   store: new SessionStore({ now: Date.now }),
   hub: new StreamHub({ timer: systemIntervalTimer }),
+  desk: new PermissionDesk({ timeouts: systemTimeouts }),
+  keys: new ControlKeys(),
   staticFiles,
+  port,
   now: Date.now,
   logError: message => console.error(message),
 })

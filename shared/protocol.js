@@ -22,7 +22,32 @@ export const EventType = Object.freeze({
   THINKING_START: 'thinking.start',
   THINKING_DELTA: 'thinking.delta',
   THINKING_END: 'thinking.end',
+  PERMISSION_REQUESTED: 'permission.requested',
+  PERMISSION_RESOLVED: 'permission.resolved',
 })
+
+/** Event types the server raises itself; hooks may not post them to /events. */
+export const SERVER_EVENT_TYPES = Object.freeze([
+  EventType.PERMISSION_REQUESTED,
+  EventType.PERMISSION_RESOLVED,
+])
+
+/**
+ * What the office can answer to a permission request; `expired` means nobody answered on the web and the
+ * terminal dialog takes over.
+ */
+export const PermissionDecision = Object.freeze({
+  ALLOW: 'allow',
+  DENY: 'deny',
+  PENDING: 'pending',
+  EXPIRED: 'expired',
+})
+
+/** Header carrying the session's control key on requests that act on the session. */
+export const CONTROL_KEY_HEADER = 'x-agents-at-work-key'
+
+/** URL query parameter the /office link uses to hand the control key to the page. */
+export const CONTROL_KEY_PARAM = 'key'
 
 export const AgentStatus = Object.freeze({
   WORKING: 'working',
@@ -39,6 +64,8 @@ export const Route = Object.freeze({
   EVENTS: '/events',
   STREAM: '/stream',
   HEALTH: '/health',
+  CONTROL_REGISTER: '/control/register',
+  PERMISSIONS: '/permissions',
 })
 
 /** Server-sent event names on the `/stream` route. */
@@ -50,6 +77,17 @@ export const StreamMessage = Object.freeze({
 /**
  * @typedef {(typeof EventType)[keyof typeof EventType]} EventTypeName
  * @typedef {(typeof AgentStatus)[keyof typeof AgentStatus]} AgentStatusName
+ * @typedef {(typeof PermissionDecision)[keyof typeof PermissionDecision]} PermissionDecisionName
+ */
+
+/**
+ * A tool call waiting for someone to allow or deny it.
+ * @typedef {object} PermissionRequest
+ * @property {string} id
+ * @property {string} tool
+ * @property {string} summary
+ * @property {string} reason Why the engine asks, as its verdict said.
+ * @property {number} requestedAt Epoch milliseconds.
  */
 
 /**
@@ -75,6 +113,8 @@ export const StreamMessage = Object.freeze({
  * @property {string} [summary]
  * @property {boolean} [failed]
  * @property {string} [text]
+ * @property {string} [requestId]
+ * @property {PermissionDecisionName} [decision]
  */
 
 /**
@@ -103,6 +143,7 @@ export const StreamMessage = Object.freeze({
  * @property {ToolRecord[]} history
  * @property {string} answer
  * @property {number} createdAt
+ * @property {PermissionRequest | null} pendingPermission
  */
 
 /**

@@ -69,6 +69,14 @@ export const en = {
     'panel.answer': 'Answer',
     'panel.inProgress': 'in progress',
 
+    'permission.title': '🙋 Permission requested',
+    'permission.bubble': '🙋 May I? {what}',
+    'permission.allow': 'Allow',
+    'permission.deny': 'Deny',
+    'permission.hint': 'Answer here, or the terminal asks after 60 s.',
+    'permission.noKey': 'Open the office with /office to answer from here.',
+    'permission.failed': 'Could not send the answer: {error}',
+
     'ranking.kicker': '☕ Coffee machine',
     'ranking.title': 'Employee of the month (in reverse)',
     'ranking.note':

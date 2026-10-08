@@ -27,5 +27,6 @@ export function createAgentSnapshot(id, fields, now) {
     history: [],
     answer: '',
     createdAt: now,
+    pendingPermission: null,
   }
 }

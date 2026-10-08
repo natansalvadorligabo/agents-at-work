@@ -18,7 +18,11 @@ export class FakeClock {
 
   /** @param {number} ms @param {() => void} callback */
   after = (ms, callback) => {
-    this.#timers.push({ at: this.current + ms, callback, every: 0 })
+    const timer = { at: this.current + ms, callback, every: 0 }
+    this.#timers.push(timer)
+    return () => {
+      this.#timers = this.#timers.filter(other => other !== timer)
+    }
   }
 
   /** @param {number} ms @param {() => void} callback */

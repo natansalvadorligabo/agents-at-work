@@ -31,6 +31,17 @@ Time at the coffee machine is **blocked time**:
 
 The page speaks **Português (Brasil)** and **English (US)** — switch with the flags in the top-right corner.
 
+### Approve tools from the office
+
+When Claude Code would ask permission for a tool call, the agent **raises its hand** in the office and
+its panel shows **Allow / Deny**. Answer there, or wait 60 s and the usual terminal dialog appears. With
+no office page open, nothing changes: the terminal asks right away. Questions (`AskUserQuestion`) and
+plan approval stay in the terminal — Claude Code only lets plugins tighten those.
+
+Only the page opened by `/office` can answer: the link carries a per-session secret key (removed from
+the address bar on load). The server also refuses requests from other web sites, foreign host names
+(DNS rebinding) and browsers on the routes reserved for the plugin.
+
 ## Install
 
 ```sh
@@ -49,6 +60,7 @@ npm test            # web + server tests (node --test) and hook tests (claude pl
 npm run check       # prettier + typecheck + tests
 npm start           # run the office server alone
 npm run demo:coffee # fake a 2-minute session against the running server (open the printed URL)
+npm run demo:permission # raise a fake permission request and wait for Allow / Deny
 ```
 
 | Path       | What lives there                                                                   |

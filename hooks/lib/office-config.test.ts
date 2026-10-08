@@ -1,9 +1,16 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { browserOpenCommands, officePageUrl } from './office-config.js'
+import { browserOpenCommands, officePageUrl, permissionUrl } from './office-config.js'
 
 describe('officePageUrl', () => {
-  test('encodes the session id into the query string', async () => {
-    expect(officePageUrl('abc 1')).toBe('http://127.0.0.1:47821/?session=abc%201')
+  test('carries the session id and the control key', async () => {
+    expect(officePageUrl('abc 1', 'k1')).toBe('http://127.0.0.1:47821/?session=abc%201&key=k1')
+  })
+})
+
+describe('permissionUrl', () => {
+  test('adds the wait only for long-polls', async () => {
+    expect(permissionUrl('toolu_1', 25000)).toBe('http://127.0.0.1:47821/permissions/toolu_1?waitMs=25000')
+    expect(permissionUrl('toolu_1')).toBe('http://127.0.0.1:47821/permissions/toolu_1')
   })
 })
 

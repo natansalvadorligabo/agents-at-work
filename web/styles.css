@@ -361,3 +361,36 @@ body {
     display: none;
   }
 }
+
+.permission-card {
+  margin: 4px 0 12px;
+  padding: 10px;
+  background: #3a2f12;
+  border: 2px solid var(--accent);
+  box-shadow: 3px 3px 0 #0006;
+}
+.permission-card h3 {
+  margin-top: 0 !important;
+  color: var(--accent) !important;
+}
+.permission-what {
+  margin: 0 0 6px;
+  word-break: break-word;
+}
+.permission-actions {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+.button-allow {
+  background: #1f5d3e;
+  border-color: var(--success);
+}
+.button-deny {
+  background: #5d1f24;
+  border-color: var(--error);
+}
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

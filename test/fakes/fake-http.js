@@ -2,11 +2,12 @@ import { EventEmitter } from 'node:events'
 
 /** Stands in for http.IncomingMessage: emits its body once `send` is called. */
 export class FakeIncomingRequest extends EventEmitter {
-  /** @param {{ method: string, url: string }} options */
-  constructor({ method, url }) {
+  /** @param {{ method: string, url: string, headers?: Record<string, string> }} options */
+  constructor({ method, url, headers = { host: '127.0.0.1:47821' } }) {
     super()
     this.method = method
     this.url = url
+    this.headers = headers
   }
 
   /** @param {string} body */

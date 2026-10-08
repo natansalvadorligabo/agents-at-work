@@ -3,6 +3,7 @@ import { agentDisplayName, escapeHtml } from '../agents/agent-names.js'
 import { toolBubbleText } from '../agents/tool-catalog.js'
 import { formatShortDuration, formatTimeOfDay, formatToolDuration } from '../i18n/formatters.js'
 import { panelHeaderHtml } from './panel-header.js'
+import { renderPermissionRequest } from './permission-view.js'
 
 /**
  * @typedef {import('#shared/protocol.js').AgentSnapshot} AgentSnapshot
@@ -15,6 +16,7 @@ import { panelHeaderHtml } from './panel-header.js'
  * @property {CoffeeStat} coffee
  * @property {Translator} translator
  * @property {number} now Epoch milliseconds, for tools still running.
+ * @property {boolean} canDecide Whether this page holds the key to answer permission requests.
  */
 
 const HISTORY_SHOWN = 40
@@ -40,6 +42,9 @@ export function renderAgentPanel(input) {
   const { snapshot, translator } = input
   return [
     panelHeaderHtml(agentDisplayName(snapshot, translator), translator, snapshot.agentType),
+    snapshot.pendingPermission
+      ? renderPermissionRequest(snapshot.pendingPermission, { canDecide: input.canDecide, translator })
+      : '',
     factsHtml(input),
     activeToolsHtml(snapshot, translator),
     taskHtml(snapshot, translator),

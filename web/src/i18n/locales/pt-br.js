@@ -69,6 +69,14 @@ export const ptBr = {
     'panel.answer': 'Resposta',
     'panel.inProgress': 'em andamento',
 
+    'permission.title': '🙋 Pedido de permissão',
+    'permission.bubble': '🙋 Posso? {what}',
+    'permission.allow': 'Permitir',
+    'permission.deny': 'Negar',
+    'permission.hint': 'Responda aqui, ou o terminal pergunta depois de 60 s.',
+    'permission.noKey': 'Abra o escritório com /office para responder por aqui.',
+    'permission.failed': 'Não foi possível enviar a resposta: {error}',
+
     'ranking.kicker': '☕ Cafeteira',
     'ranking.title': 'Funcionário do mês (às avessas)',
     'ranking.note':

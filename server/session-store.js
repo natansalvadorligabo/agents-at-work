@@ -128,6 +128,7 @@ function spawnAgent(session, event, now) {
     agent.history = existing.history
     agent.thoughts = existing.thoughts
     agent.createdAt = existing.createdAt
+    agent.pendingPermission = existing.pendingPermission
     agent.prompt = event.prompt || existing.prompt
   }
   session.agents.set(id, agent)
@@ -229,6 +230,26 @@ function endThinking(session, event, now) {
   return agent
 }
 
+/** @type {EventReducer} */
+function requestPermission(session, event, now) {
+  const agent = agentFor(session, event, now)
+  agent.pendingPermission = {
+    id: event.requestId ?? '',
+    tool: event.tool ?? '',
+    summary: event.summary ?? '',
+    reason: event.reason ?? '',
+    requestedAt: event.timestamp,
+  }
+  return agent
+}
+
+/** @type {EventReducer} */
+function resolvePermission(session, event, now) {
+  const agent = agentFor(session, event, now)
+  if (agent.pendingPermission?.id === event.requestId) agent.pendingPermission = null
+  return agent
+}
+
 /** @type {Record<import('#shared/protocol.js').EventTypeName, EventReducer>} */
 const REDUCERS = {
   [EventType.SESSION_START]: startSession,
@@ -242,4 +263,6 @@ const REDUCERS = {
   [EventType.THINKING_START]: startThinking,
   [EventType.THINKING_DELTA]: appendThinking,
   [EventType.THINKING_END]: endThinking,
+  [EventType.PERMISSION_REQUESTED]: requestPermission,
+  [EventType.PERMISSION_RESOLVED]: resolvePermission,
 }

@@ -2,7 +2,7 @@ import { VOXEL_SIZE as V } from '../voxel/voxel-mesh.js'
 
 /**
  * @typedef {'standing' | 'walking' | 'seated' | 'typing' | 'thinking' | 'waitingSeated' | 'napping' | 'operating'
- *   | 'writingOnBoard' | 'handingOver' | 'drinkingCoffee'} PoseName
+ *   | 'writingOnBoard' | 'handingOver' | 'drinkingCoffee' | 'raisingHand'} PoseName
  *
  * Target joint angles (radians) and body offsets (world units) for one animation frame.
  * @typedef {object} JointTargets
@@ -100,6 +100,11 @@ const POSES = {
     headPitch: -0.2,
   }),
   handingOver: () => ({ rightArm: -1.45 }),
+  // Waiting for permission: the right hand up, waving a little so it catches the eye.
+  raisingHand: ({ time }) => ({
+    rightArm: -2.9 + Math.sin(time * 8) * 0.3,
+    headRoll: Math.sin(time * 2) * 0.1,
+  }),
   drinkingCoffee: ({ time, phase }) => {
     // Holds the mug and, once per cycle, takes a sip with the head tilted back.
     const sipping = (time + phase) % 4 > 2.9

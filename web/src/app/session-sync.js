@@ -21,6 +21,7 @@ import { AgentStatus, EventType, MAIN_AGENT_ID } from '#shared/protocol.js'
  * @property {OfficeStage} office
  * @property {(session: SessionInfo) => void} showSession
  * @property {(agentId: string) => void} onAgentChanged
+ * @property {(agentId: string) => void} onPermissionRequested An agent raised its hand.
  * @property {string | null} sessionId The session asked for in the URL; null follows the first one seen.
  */
 
@@ -76,6 +77,7 @@ export class SessionSync {
     this.#remember(agent)
     if (event.type === EventType.AGENT_SPAWNED) return this.#spawn(agent, Boolean(event.restored))
     if (event.type === EventType.AGENT_FINISHED) return this.#deps.office.finishAgent(agent)
+    if (event.type === EventType.PERMISSION_REQUESTED) this.#deps.onPermissionRequested(agent.id)
     this.#update(agent)
   }
 

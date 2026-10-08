@@ -3,12 +3,24 @@ import { DEFAULT_PORT, EventType, MAIN_AGENT_ID } from '../shared/protocol.js'
 import { EventQueue } from './lib/event-queue.js'
 import type { OutgoingEvent } from './lib/event-queue.js'
 import {
+  CONTROL_REGISTER_URL,
   EVENTS_URL,
   HEALTH_URL,
+  PERMISSIONS_URL,
   SERVER_PORT_ENV,
   browserOpenCommands,
   officePageUrl,
+  permissionUrl,
 } from './lib/office-config.js'
+import {
+  POLL_WAIT_MS,
+  WEB_APPROVAL_WINDOW_MS,
+  createControlKey,
+  readPollAnswer,
+  shouldAskOffice,
+  watchersOf,
+} from './lib/permission-policy.js'
+import type { FinalDecision } from './lib/permission-policy.js'
 import { ThinkingRelay } from './lib/thinking-relay.js'
 import { folderName, shorten, summarizeToolInput } from './lib/tool-summary.js'
 
@@ -22,7 +34,12 @@ const READY_POLL_ATTEMPTS = 20
 const READY_POLL_INTERVAL_MS = 150
 const LIVE_AGENT_STATUSES = new Set(['running', 'pending', 'waiting'])
 
+const JSON_HEADERS = { 'content-type': 'application/json' }
+const WAITING_FOR_OFFICE = `Waiting for approval in the office (web)… the terminal asks in ${WEB_APPROVAL_WINDOW_MS / 1000} s`
+
 const queue = new EventQueue(() => Date.now())
+// The office page must present this key to act on the session; it travels only in the /office link.
+const controlKey = createControlKey(crypto)
 let sessionId = ''
 let launchingServer = false
 
@@ -119,11 +136,104 @@ async function openInBrowser($: EngineInterface, url: string): Promise<boolean> 
   return false
 }
 
+// Re-sent before every use: the server keeps keys in memory and may have restarted since.
+async function registerControlKey($: EngineInterface): Promise<void> {
+  try {
+    const body = JSON.stringify({ sessionId, key: controlKey })
+    await $.http.fetch(CONTROL_REGISTER_URL, { method: 'POST', headers: JSON_HEADERS, body })
+  } catch {
+    // No server: nobody can answer on the web anyway.
+  }
+}
+
 async function openOffice($: EngineInterface): Promise<{ text: string }> {
   await waitForOfficeServer($)
-  const url = officePageUrl(sessionId)
+  await registerControlKey($)
+  const url = officePageUrl(sessionId, controlKey)
   const opened = await openInBrowser($, url)
   return { text: opened ? `Office opened at ${url}` : `Open ${url} in your browser` }
+}
+
+type PermissionQuestion = {
+  requestId: string
+  agentId: string
+  tool: string
+  summary: string
+  reason: string
+}
+
+// Raises the agent's hand on the office page; answers how many pages are open to see it.
+async function openPermission($: EngineInterface, question: PermissionQuestion): Promise<number> {
+  try {
+    const body = JSON.stringify({ sessionId, ...question })
+    const response = await $.http.fetch(PERMISSIONS_URL, { method: 'POST', headers: JSON_HEADERS, body })
+    return response.ok ? watchersOf(response.text) : 0
+  } catch {
+    return 0
+  }
+}
+
+async function pollPermission(
+  $: EngineInterface,
+  requestId: string,
+): Promise<FinalDecision | 'wait' | 'give-up'> {
+  try {
+    const response = await $.http.fetch(permissionUrl(requestId, POLL_WAIT_MS))
+    return response.ok ? readPollAnswer(response.text) : 'give-up'
+  } catch {
+    return 'give-up'
+  }
+}
+
+async function withdrawPermission($: EngineInterface, requestId: string): Promise<void> {
+  try {
+    await $.http.fetch(permissionUrl(requestId), { method: 'DELETE' })
+  } catch {
+    // The server is gone, and the request with it.
+  }
+}
+
+// Long-polls instead of sleeping: the hook's 10 s budget pauses during `$.http.fetch`, not `$.clock.sleep`.
+async function waitForOfficeDecision($: EngineInterface, requestId: string): Promise<FinalDecision | null> {
+  const deadline = Date.now() + WEB_APPROVAL_WINDOW_MS
+  while (Date.now() < deadline) {
+    const answer = await pollPermission($, requestId)
+    if (answer === 'give-up') return null
+    if (answer !== 'wait') return answer
+  }
+  return null
+}
+
+// Null means nobody answered on the web: the engine's own dialog then asks in the terminal.
+async function askOffice($: EngineInterface, question: PermissionQuestion): Promise<FinalDecision | null> {
+  await registerControlKey($)
+  if ((await openPermission($, question)) === 0) {
+    await withdrawPermission($, question.requestId)
+    return null
+  }
+  $.ui.status(WAITING_FOR_OFFICE)
+  try {
+    return await waitForOfficeDecision($, question.requestId)
+  } finally {
+    $.ui.status(undefined)
+    await withdrawPermission($, question.requestId)
+  }
+}
+
+const onToolCheck: Hook<'tool.check'> = async ($, e, next) => {
+  const verdict = await next(e)
+  if (!shouldAskOffice(verdict.decision, e.tool, e.tool_use_id)) return verdict
+  const question = {
+    requestId: e.tool_use_id ?? '',
+    agentId: e.agentId ?? MAIN_AGENT_ID,
+    tool: e.tool,
+    summary: summarizeToolInput((e.input ?? {}) as Record<string, unknown>),
+    reason: verdict.reason ?? '',
+  }
+  const decision = await askOffice($, question)
+  if (decision === null) return verdict
+  const reason = decision === 'allow' ? 'Allowed in the office (web)' : 'Denied in the office (web)'
+  return { ...verdict, decision, reason }
 }
 
 const onSessionStart: Hook<'session.start'> = async ($, e, next) => {
@@ -216,7 +326,7 @@ const onTurnStep: Hook<'turn.step'> = async function* ($, e, next) {
 export const register: Register = on => {
   on('session.start', onSessionStart)
   on('command.run', { command: OFFICE_COMMAND }, async $ => openOffice($)).catch(() => ({
-    text: `Open ${officePageUrl(sessionId)} in your browser`,
+    text: `Open ${officePageUrl(sessionId, controlKey)} in your browser`,
   }))
   on('session.end', onSessionEnd)
   on('turn.start', onTurnStart)
@@ -224,5 +334,7 @@ export const register: Register = on => {
   // Observers only: if publishing throws, the spawn / tool call proceeds untouched.
   on('agent.spawn', onAgentSpawn).catch(($, e, next) => next(e))
   on('tool.call', onToolCall).catch(($, e, next) => next(e))
+  // On failure, fall back to the engine's own verdict (its dialog), never to an allow.
+  on('tool.check', onToolCheck).catch(($, e, next) => next(e))
   on('turn.step', onTurnStep)
 }

@@ -61,11 +61,27 @@ export function poseAt(target) {
  * @example planActivity({ snapshot, now: Date.now(), currentTarget: 'desk', thinkingSince: 0, coffeeVisit: null, officeIdle: false, translator })
  */
 export function planActivity(input) {
+  if (input.snapshot.pendingPermission) return planPermissionWait(input, input.snapshot.pendingPermission)
   const tool = newestActiveTool(input.snapshot)
   if (input.coffeeVisit) return { target: 'coffee', pose: 'drinkingCoffee', bubble: input.coffeeVisit.bubble }
   if (tool) return planForTool(tool, input)
   const plan = planWithoutTool(input)
   return input.officeIdle && plan.target === 'desk' && !input.snapshot.thinking ? planNap(input) : plan
+}
+
+/**
+ * Waiting for someone to allow a tool call: the agent stays where it is and raises its hand.
+ * @param {ActivityInput} input
+ * @param {import('#shared/protocol.js').PermissionRequest} request
+ * @returns {ActivityPlan}
+ */
+function planPermissionWait({ currentTarget, translator }, request) {
+  const what = toolBubbleText({ tool: request.tool, summary: request.summary }, translator)
+  return {
+    target: currentTarget ?? 'desk',
+    pose: 'raisingHand',
+    bubble: translator.t('permission.bubble', { what }),
+  }
 }
 
 /**

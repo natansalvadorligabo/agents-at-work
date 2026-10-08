@@ -21,6 +21,11 @@ import { renderCoffeeRanking } from './coffee-ranking-view.js'
  * @property {Clock} clock
  * @property {IntervalTimer} timer
  * @property {(callback: () => void) => void} nextFrame
+ * @property {PermissionAnswerer} permissions
+ *
+ * @typedef {object} PermissionAnswerer
+ * @property {boolean} canDecide
+ * @property {(requestId: string, decision: 'allow' | 'deny') => Promise<void>} decidePermission
  *
  * @typedef {{ kind: 'closed' } | { kind: 'agent', agentId: string } | { kind: 'ranking' }} PanelView
  */
@@ -45,9 +50,9 @@ export class DetailsPanel {
   /** @param {DetailsPanelDependencies} dependencies */
   constructor(dependencies) {
     this.#deps = dependencies
-    dependencies.element.addEventListener('click', event => {
-      if (/** @type {Element} */ (event.target).closest('[data-action="close"]')) this.close()
-    })
+    dependencies.element.addEventListener('click', event =>
+      this.#onClick(/** @type {Element} */ (event.target)),
+    )
     dependencies.translator.onChange(() => this.redraw())
   }
 
@@ -103,6 +108,31 @@ export class DetailsPanel {
     this.#deps.element.innerHTML = renderCoffeeRanking(this.#deps.coffee.ranking(), this.#deps.translator)
   }
 
+  /** @param {Element} target */
+  #onClick(target) {
+    if (target.closest('[data-action="close"]')) return this.close()
+    const button = /** @type {HTMLButtonElement | null} */ (
+      target.closest('[data-action="allow"], [data-action="deny"]')
+    )
+    if (button) void this.#answerPermission(button)
+  }
+
+  /**
+   * Sends Allow / Deny; the card disappears when the server confirms through the stream.
+   * @param {HTMLButtonElement} button
+   */
+  async #answerPermission(button) {
+    const decision = button.dataset.action === 'allow' ? 'allow' : 'deny'
+    const card = button.closest('.permission-card')
+    for (const other of card?.querySelectorAll('button') ?? []) other.disabled = true
+    try {
+      await this.#deps.permissions.decidePermission(button.dataset.requestId ?? '', decision)
+    } catch (error) {
+      const note = card?.querySelector('.panel-note:last-child')
+      if (note) note.textContent = this.#deps.translator.t('permission.failed', { error: String(error) })
+    }
+  }
+
   /** @param {string} agentId */
   #drawAgent(agentId) {
     const { element, snapshotOf, coffee, translator, clock } = this.#deps
@@ -117,6 +147,7 @@ export class DetailsPanel {
       coffee: coffee.statFor(agentId),
       translator,
       now: clock.now(),
+      canDecide: this.#deps.permissions.canDecide,
     })
     // Keep live thoughts scrolled to the end unless the viewer scrolled up to read.
     const thoughts = element.querySelector('.thoughts')

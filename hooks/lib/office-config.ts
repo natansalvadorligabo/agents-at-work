@@ -1,16 +1,28 @@
-import { DEFAULT_PORT, Route } from '../../shared/protocol.js'
+import { CONTROL_KEY_PARAM, DEFAULT_PORT, Route } from '../../shared/protocol.js'
 
 export const OFFICE_URL = `http://127.0.0.1:${DEFAULT_PORT}`
 export const HEALTH_URL = `${OFFICE_URL}${Route.HEALTH}`
 export const EVENTS_URL = `${OFFICE_URL}${Route.EVENTS}`
+export const CONTROL_REGISTER_URL = `${OFFICE_URL}${Route.CONTROL_REGISTER}`
+export const PERMISSIONS_URL = `${OFFICE_URL}${Route.PERMISSIONS}`
 export const SERVER_PORT_ENV = 'AGENTS_AT_WORK_PORT'
 
 /**
- * Builds the address that opens the office for one session.
- * @example officePageUrl('abc 1') // 'http://127.0.0.1:47821/?session=abc%201'
+ * Builds the address that opens the office for one session, carrying the key that lets the page act on it.
+ * @example officePageUrl('abc 1', 'k') // 'http://127.0.0.1:47821/?session=abc%201&key=k'
  */
-export function officePageUrl(sessionId: string): string {
-  return `${OFFICE_URL}/?session=${encodeURIComponent(sessionId)}`
+export function officePageUrl(sessionId: string, controlKey: string): string {
+  const query = new URLSearchParams({ session: sessionId, [CONTROL_KEY_PARAM]: controlKey })
+  return `${OFFICE_URL}/?${query.toString().replace(/\+/g, '%20')}`
+}
+
+/**
+ * The long-poll address for one permission request.
+ * @example permissionUrl('toolu_1', 25000) // 'http://127.0.0.1:47821/permissions/toolu_1?waitMs=25000'
+ */
+export function permissionUrl(requestId: string, waitMs?: number): string {
+  const wait = waitMs === undefined ? '' : `?waitMs=${waitMs}`
+  return `${PERMISSIONS_URL}/${encodeURIComponent(requestId)}${wait}`
 }
 
 /**

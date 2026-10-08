@@ -1,8 +1,11 @@
-import { EventType } from '#shared/protocol.js'
+import { EventType, SERVER_EVENT_TYPES } from '#shared/protocol.js'
 
 /** @typedef {import('#shared/protocol.js').OfficeEvent} OfficeEvent */
 
-const KNOWN_TYPES = new Set(/** @type {string[]} */ (Object.values(EventType)))
+const SERVER_ONLY = new Set(/** @type {string[]} */ (SERVER_EVENT_TYPES))
+const KNOWN_TYPES = new Set(
+  /** @type {string[]} */ (Object.values(EventType)).filter(type => !SERVER_ONLY.has(type)),
+)
 const EXPECTED_SHAPE = `{ type: ${[...KNOWN_TYPES].join(' | ')}, sessionId: non-empty string, ... }`
 const PREVIEW_LENGTH = 120
 
