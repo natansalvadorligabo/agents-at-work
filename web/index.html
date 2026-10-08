@@ -1,35 +1,49 @@
 <!doctype html>
-<html lang="pt-BR">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Escritório de Agentes</title>
-  <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="estilo.css">
-  <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
-</head>
-<body>
-  <div id="cena"></div>
-  <div id="camada-html"></div>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agents at Work</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="styles.css" />
+    <script type="importmap">
+      { "imports": { "three": "./vendor/three.module.min.js", "#shared/": "./shared/" } }
+    </script>
+  </head>
+  <body>
+    <div id="scene"></div>
+    <div id="labels"></div>
 
-  <header id="barra">
-    <div class="marca">
-      <span id="conexao" class="indicador-conexao" title="Conexão com a sessão"></span>
-      <strong>Escritório de Agentes</strong>
-      <span class="placa-porta" id="projeto">aguardando sessão</span>
-    </div>
-    <button id="recentralizar" class="botao oculto">⟲ Recentralizar</button>
-  </header>
+    <header id="top-bar">
+      <div class="brand">
+        <span id="connection" class="connection-dot" data-i18n-title="header.connection"></span>
+        <strong data-i18n="page.title">Agents at Work</strong>
+        <span class="door-plate" id="project"></span>
+      </div>
+      <div class="top-bar-actions">
+        <button id="recenter" class="button hidden" type="button" data-i18n="header.recenter">
+          ⟲ Recenter
+        </button>
+        <div id="language" class="language-switcher" role="group"></div>
+      </div>
+    </header>
 
-  <div id="aviso-encerrada" class="aviso oculto">Sessão encerrada</div>
+    <div id="session-ended" class="notice hidden" data-i18n="notice.sessionEnded">Session ended</div>
 
-  <aside id="painel" aria-live="polite"></aside>
+    <aside id="panel" aria-live="polite"></aside>
 
-  <footer id="legenda">
-    <span>📚 leitura</span><span>⌨️ edição</span><span>🖥️ terminal</span><span>🌐 web</span><span>📞 MCP</span><span>📝 planejamento</span><span>💭 pensando</span><span>☕ esperando</span>
-    <span class="dica">arraste para girar · botão direito para mover · roda para zoom · clique num agente para detalhes (ou na cafeteira…)</span>
-  </footer>
+    <footer id="legend">
+      <span data-i18n="legend.reading"></span>
+      <span data-i18n="legend.editing"></span>
+      <span data-i18n="legend.terminal"></span>
+      <span data-i18n="legend.web"></span>
+      <span data-i18n="legend.mcp"></span>
+      <span data-i18n="legend.planning"></span>
+      <span data-i18n="legend.thinking"></span>
+      <span data-i18n="legend.waiting"></span>
+      <span class="hint" data-i18n="legend.hint"></span>
+    </footer>
 
-  <script type="module" src="js/principal.js"></script>
-</body>
+    <script type="module" src="src/main.js"></script>
+  </body>
 </html>

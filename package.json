@@ -1,0 +1,32 @@
+{
+  "name": "agents-at-work",
+  "version": "0.1.0-beta.1",
+  "private": true,
+  "description": "Claude Code plugin that shows your main agent and subagents working in a voxel office in the browser.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "imports": {
+    "#shared/*": "./shared/*"
+  },
+  "scripts": {
+    "start": "node server/main.js",
+    "test": "node --test \"test/**/*.test.js\" && claude plugin test .",
+    "test:web": "node --test \"test/**/*.test.js\"",
+    "test:hooks": "claude plugin test .",
+    "typecheck": "tsc -p tsconfig.app.json && tsc -p tsconfig.json",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run format:check && npm run typecheck && npm test",
+    "demo:coffee": "node tools/simulate/coffee-demo.js",
+    "demo:gossip": "node tools/simulate/gossip-demo.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/three": "0.169.0",
+    "prettier": "^3.4.0",
+    "three": "0.169.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,245 +1,228 @@
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Hook, Register } from 'claude-code'
+import { DEFAULT_PORT, EventType, MAIN_AGENT_ID } from '../shared/protocol.js'
+import { EventQueue } from './lib/event-queue.js'
+import type { OutgoingEvent } from './lib/event-queue.js'
+import {
+  EVENTS_URL,
+  HEALTH_URL,
+  SERVER_PORT_ENV,
+  browserOpenCommands,
+  officePageUrl,
+} from './lib/office-config.js'
+import { ThinkingRelay } from './lib/thinking-relay.js'
+import { folderName, shorten, summarizeToolInput } from './lib/tool-summary.js'
 
-const PORTA = 47821
-const ENDERECO_SERVIDOR = `http://127.0.0.1:${PORTA}`
-const AGENTE_PRINCIPAL = 'principal'
-const INTERVALO_VERIFICACAO_SERVIDOR_MS = 5000
-const INTERVALO_ENVIO_PENSAMENTO_MS = 300
-const TAMANHO_MAXIMO_LOTE = 50
-const TAMANHO_MAXIMO_RESUMO = 60
+// Every function that touches `$` lives in this file: the engine follows `$` only into functions declared
+// in the hooks module itself, never across an import (see `claude plugin validate`). Pure logic is in lib/.
 
-type Evento = { tipo: string; agenteId?: string; [campo: string]: unknown }
+export const OFFICE_COMMAND = 'office'
 
-let sessaoId = ''
-let projeto = ''
-let servidorEmExecucao = false
-let envioEmAndamento = false
-const filaEventos: Evento[] = []
+const SERVER_CHECK_INTERVAL_MS = 5000
+const READY_POLL_ATTEMPTS = 20
+const READY_POLL_INTERVAL_MS = 150
+const LIVE_AGENT_STATUSES = new Set(['running', 'pending', 'waiting'])
 
-function nomeDaPasta(caminho: string): string {
-  const partes = caminho.split(/[\\/]/).filter(Boolean)
-  return partes[partes.length - 1] ?? caminho
+const queue = new EventQueue(() => Date.now())
+let sessionId = ''
+let launchingServer = false
+
+function publish($: EngineInterface, event: OutgoingEvent): void {
+  queue.enqueue(event)
+  if (queue.beginFlush()) void flushQueue($)
 }
 
-function encurtar(texto: string): string {
-  const linhaUnica = texto.replace(/\s+/g, ' ').trim()
-  return linhaUnica.length > TAMANHO_MAXIMO_RESUMO
-    ? `${linhaUnica.slice(0, TAMANHO_MAXIMO_RESUMO - 1)}…`
-    : linhaUnica
+function publishAll($: EngineInterface, events: OutgoingEvent[]): void {
+  for (const event of events) publish($, event)
 }
 
-function resumirArgumentos(argumentos: Record<string, unknown>): string {
-  const texto = (campo: string) => (typeof argumentos[campo] === 'string' ? (argumentos[campo] as string) : undefined)
-  const arquivo = texto('file_path') ?? texto('notebook_path')
-  if (arquivo) return nomeDaPasta(arquivo)
-  const url = texto('url')
-  if (url) {
-    try {
-      return new URL(url).host
-    } catch {
-      return encurtar(url)
-    }
-  }
-  const valor = texto('command') ?? texto('pattern') ?? texto('query') ?? texto('description') ?? texto('prompt')
-  return valor ? encurtar(valor) : ''
-}
-
-function publicar($: EngineInterface, evento: Evento): void {
-  filaEventos.push({ ...evento, sessaoId, projeto, instante: Date.now() })
-  if (!envioEmAndamento) void descarregarFila($)
-}
-
-async function descarregarFila($: EngineInterface): Promise<void> {
-  envioEmAndamento = true
+async function flushQueue($: EngineInterface): Promise<void> {
   try {
-    while (filaEventos.length > 0) {
-      const lote = filaEventos.splice(0, TAMANHO_MAXIMO_LOTE)
-      try {
-        await $.http.fetch(`${ENDERECO_SERVIDOR}/eventos`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(lote),
-        })
-      } catch {
-        // Sem servidor no ar os eventos são descartados: a cena se recompõe pelo snapshot seguinte.
-      }
-    }
+    for (let batch = queue.takeBatch(); batch; batch = queue.takeBatch()) await postEventsQuietly($, batch)
   } finally {
-    envioEmAndamento = false
+    queue.endFlush()
   }
 }
 
-async function servidorResponde($: EngineInterface): Promise<boolean> {
+// Re-announces subagents that were already running when the plugin (re)loaded, so the office is not empty.
+async function publishRunningAgents($: EngineInterface): Promise<void> {
+  for (const agent of await $.agent.list()) {
+    if (!LIVE_AGENT_STATUSES.has(agent.status)) continue
+    publish($, {
+      type: EventType.AGENT_SPAWNED,
+      agentId: agent.id,
+      parentId: agent.parentId ?? MAIN_AGENT_ID,
+      agentType: agent.type,
+      description: agent.description,
+      name: agent.name ?? null,
+      restored: true,
+    })
+  }
+}
+
+// With no server up the events are dropped: the browser rebuilds the scene from the next snapshot.
+async function postEventsQuietly($: EngineInterface, batch: OutgoingEvent[]): Promise<void> {
   try {
-    const resposta = await $.http.fetch(`${ENDERECO_SERVIDOR}/saude`)
-    return resposta.ok
+    const body = JSON.stringify(batch)
+    await $.http.fetch(EVENTS_URL, { method: 'POST', headers: { 'content-type': 'application/json' }, body })
+  } catch {
+    // Dropped on purpose, see above.
+  }
+}
+
+async function isOfficeServerHealthy($: EngineInterface): Promise<boolean> {
+  try {
+    const response = await $.http.fetch(HEALTH_URL)
+    return response.ok
   } catch {
     return false
   }
 }
 
-async function garantirServidor($: EngineInterface): Promise<void> {
-  if (servidorEmExecucao || (await servidorResponde($))) return
-  servidorEmExecucao = true
+// Spawns the Node server that serves the office page unless one already answers; resolves when it exits.
+async function ensureOfficeServer($: EngineInterface): Promise<void> {
+  if (launchingServer || (await isOfficeServerHealthy($))) return
+  launchingServer = true
   try {
-    const processo = $.process.spawn({
-      argv: ['node', `${$.plugin.root}/servidor/servidor.mjs`],
-      env: { ESCRITORIO_PORTA: String(PORTA) },
-    })
-    for await (const saida of processo) $.ui.log(saida.text, { to: 'debug' })
-  } catch (erro) {
-    $.ui.log(`servidor do escritório não iniciou: ${String(erro)}`, { to: 'debug' })
+    const argv = ['node', `${$.plugin.root}/server/main.js`]
+    const child = $.process.spawn({ argv, env: { [SERVER_PORT_ENV]: String(DEFAULT_PORT) } })
+    for await (const output of child) $.ui.log(output.text, { to: 'debug' })
+  } catch (error) {
+    $.ui.log(`agents-at-work server did not start: ${String(error)}`, { to: 'debug' })
   } finally {
-    servidorEmExecucao = false
+    launchingServer = false
   }
 }
 
-async function publicarAgentesEmExecucao($: EngineInterface): Promise<void> {
-  const agentes = await $.agent.list()
-  for (const agente of agentes) {
-    if (agente.status !== 'running' && agente.status !== 'pending' && agente.status !== 'waiting') continue
-    publicar($, {
-      tipo: 'agente.criado',
-      agenteId: agente.id,
-      paiId: agente.parentId ?? AGENTE_PRINCIPAL,
-      tipoAgente: agente.type,
-      descricao: agente.description,
-      nome: agente.name,
-      restaurado: true,
+// Waits briefly for a fresh server so the browser opens on a live page rather than an error.
+async function waitForOfficeServer($: EngineInterface): Promise<void> {
+  if (await isOfficeServerHealthy($)) return
+  void ensureOfficeServer($)
+  for (let attempt = 0; attempt < READY_POLL_ATTEMPTS; attempt++) {
+    await $.clock.sleep(READY_POLL_INTERVAL_MS)
+    if (await isOfficeServerHealthy($)) return
+  }
+}
+
+async function runsSuccessfully($: EngineInterface, argv: string[]): Promise<boolean> {
+  try {
+    const { exitCode } = await $.process.run(argv)
+    return exitCode === 0
+  } catch {
+    return false
+  }
+}
+
+async function openInBrowser($: EngineInterface, url: string): Promise<boolean> {
+  for (const argv of browserOpenCommands(url)) {
+    if (await runsSuccessfully($, argv)) return true
+  }
+  return false
+}
+
+async function openOffice($: EngineInterface): Promise<{ text: string }> {
+  await waitForOfficeServer($)
+  const url = officePageUrl(sessionId)
+  const opened = await openInBrowser($, url)
+  return { text: opened ? `Office opened at ${url}` : `Open ${url} in your browser` }
+}
+
+const onSessionStart: Hook<'session.start'> = async ($, e, next) => {
+  const started = await next(e)
+  sessionId = await $.session.id()
+  queue.identify(sessionId, folderName(e.cwd))
+  await $.command.register({
+    name: OFFICE_COMMAND,
+    description: "Opens this session's voxel office in the browser",
+  })
+  void ensureOfficeServer($)
+  $.clock.every(SERVER_CHECK_INTERVAL_MS, () => void ensureOfficeServer($))
+  publish($, { type: EventType.SESSION_START })
+  void publishRunningAgents($)
+  return started
+}
+
+const onSessionEnd: Hook<'session.end'> = async ($, e, next) => {
+  publish($, { type: EventType.SESSION_END, reason: e.reason })
+  return next(e)
+}
+
+const onTurnStart: Hook<'turn.start'> = async ($, e, next) => {
+  publish($, { type: EventType.TURN_START, agentId: MAIN_AGENT_ID })
+  return next(e)
+}
+
+const onTurnComplete: Hook<'turn.complete'> = async ($, e, next) => {
+  if (e.agentId === undefined) {
+    publish($, { type: EventType.TURN_END, agentId: MAIN_AGENT_ID, reason: e.reason })
+  } else {
+    const answer = shorten(e.answer)
+    publish($, {
+      type: EventType.AGENT_FINISHED,
+      agentId: e.agentId,
+      reason: e.reason,
+      answer,
+      durationMs: e.durationMs,
     })
   }
+  return next(e)
 }
 
+const onAgentSpawn: Hook<'agent.spawn'> = async ($, e, next) => {
+  const result = await next(e)
+  if (result.agentId === undefined) return result
+  publish($, {
+    type: EventType.AGENT_SPAWNED,
+    agentId: result.agentId,
+    parentId: e.parentAgentId ?? MAIN_AGENT_ID,
+    agentType: e.subagentType,
+    description: e.description,
+    name: e.name ?? null,
+    prompt: e.prompt,
+    background: e.background,
+  })
+  return result
+}
+
+const onToolCall: Hook<'tool.call'> = async ($, e, next) => {
+  const agentId = e.agentId ?? MAIN_AGENT_ID
+  const toolUseId = e.tool_use_id ?? `${agentId}-${Date.now()}`
+  const summary = summarizeToolInput(e as unknown as Record<string, unknown>)
+  publish($, { type: EventType.TOOL_START, agentId, toolUseId, tool: String(e.tool), summary })
+  const result = await next(e)
+  const failed = result.deny !== undefined || result.isError === true
+  publish($, { type: EventType.TOOL_END, agentId, toolUseId, failed })
+  return result
+}
+
+const onTurnStep: Hook<'turn.step'> = async function* ($, e, next) {
+  const relay = new ThinkingRelay(e.agentId ?? MAIN_AGENT_ID, () => Date.now())
+  try {
+    for await (const chunk of next(e)) {
+      yield chunk
+      publishAll(
+        $,
+        relay.onChunk(chunk.kind, 'text' in chunk && typeof chunk.text === 'string' ? chunk.text : ''),
+      )
+    }
+  } finally {
+    publishAll($, relay.finish())
+  }
+}
+
+/**
+ * Plugin entry point: mirrors the session's agents, tools and thinking to the office server.
+ * @example { "modules": ["./register.ts"] } // hooks/hooks.json
+ */
 export const register: Register = on => {
-  on('session.start', async ($, e, next) => {
-    const iniciada = await next(e)
-    sessaoId = await $.session.id()
-    projeto = nomeDaPasta(e.cwd)
-    await $.command.register({
-      name: 'escritorio',
-      description: 'Abre no navegador o escritório em voxel dos agentes desta sessão',
-    })
-    void garantirServidor($)
-    $.clock.every(INTERVALO_VERIFICACAO_SERVIDOR_MS, () => void garantirServidor($))
-    publicar($, { tipo: 'sessao.inicio' })
-    void publicarAgentesEmExecucao($)
-    return iniciada
-  })
-
-  on('command.run', { command: 'escritorio' }, async $ => {
-    await garantirServidorAntesDeAbrir($)
-    const endereco = `${ENDERECO_SERVIDOR}/?sessao=${encodeURIComponent(sessaoId)}`
-    // "start" é um comando interno do cmd; o título vazio evita que a URL seja lida como título da janela.
-    await $.process.run(['cmd', '/c', 'start', '', endereco])
-    return { text: `Escritório aberto em ${endereco}` }
-  })
-
-  on('session.end', async ($, e, next) => {
-    publicar($, { tipo: 'sessao.fim', motivo: e.reason })
-    return next(e)
-  })
-
-  on('turn.start', async ($, e, next) => {
-    publicar($, { tipo: 'turno.inicio', agenteId: AGENTE_PRINCIPAL })
-    return next(e)
-  })
-
-  on('turn.complete', async ($, e, next) => {
-    if (e.agentId === undefined) {
-      publicar($, { tipo: 'turno.fim', agenteId: AGENTE_PRINCIPAL, motivo: e.reason })
-    } else {
-      publicar($, {
-        tipo: 'agente.concluido',
-        agenteId: e.agentId,
-        motivo: e.reason,
-        resposta: encurtar(e.answer),
-        duracaoMs: e.durationMs,
-      })
-    }
-    return next(e)
-  })
-
-  on('agent.spawn', async ($, e, next) => {
-    const resultado = await next(e)
-    if (resultado.agentId !== undefined) {
-      publicar($, {
-        tipo: 'agente.criado',
-        agenteId: resultado.agentId,
-        paiId: e.parentAgentId ?? AGENTE_PRINCIPAL,
-        tipoAgente: e.subagentType,
-        descricao: e.description,
-        nome: e.name,
-        prompt: e.prompt,
-        segundoPlano: e.background,
-      })
-    }
-    return resultado
-  })
-
-  on('tool.call', async ($, e, next) => {
-    const agenteId = e.agentId ?? AGENTE_PRINCIPAL
-    const ferramentaId = e.tool_use_id ?? `${agenteId}-${Date.now()}`
-    publicar($, {
-      tipo: 'ferramenta.inicio',
-      agenteId,
-      ferramentaId,
-      ferramenta: String(e.tool),
-      resumo: resumirArgumentos(e as unknown as Record<string, unknown>),
-    })
-    const resultado = await next(e)
-    publicar($, {
-      tipo: 'ferramenta.fim',
-      agenteId,
-      ferramentaId,
-      erro: resultado.deny !== undefined || resultado.isError === true,
-    })
-    return resultado
-  })
-
-  on('turn.step', async function* ($, e, next) {
-    const agenteId = e.agentId ?? AGENTE_PRINCIPAL
-    let pensando = false
-    let pensamentoPendente = ''
-    let ultimoEnvio = 0
-
-    const enviarPensamentoPendente = () => {
-      if (pensamentoPendente === '') return
-      publicar($, { tipo: 'pensamento', agenteId, texto: pensamentoPendente })
-      pensamentoPendente = ''
-      ultimoEnvio = Date.now()
-    }
-    const encerrarPensamento = () => {
-      if (!pensando) return
-      enviarPensamentoPendente()
-      publicar($, { tipo: 'pensamento.fim', agenteId })
-      pensando = false
-    }
-
-    try {
-      for await (const pedaco of next(e)) {
-        yield pedaco
-        if (pedaco.kind === 'thinking') {
-          if (!pensando) {
-            pensando = true
-            publicar($, { tipo: 'pensamento.inicio', agenteId })
-          }
-          pensamentoPendente += pedaco.text
-          if (Date.now() - ultimoEnvio >= INTERVALO_ENVIO_PENSAMENTO_MS) enviarPensamentoPendente()
-        } else if (pedaco.kind !== 'engine') {
-          encerrarPensamento()
-        }
-      }
-    } finally {
-      encerrarPensamento()
-    }
-  })
-}
-
-async function garantirServidorAntesDeAbrir($: EngineInterface): Promise<void> {
-  if (await servidorResponde($)) return
-  void garantirServidor($)
-  for (let tentativa = 0; tentativa < 20; tentativa++) {
-    await $.clock.sleep(150)
-    if (await servidorResponde($)) return
-  }
+  on('session.start', onSessionStart)
+  on('command.run', { command: OFFICE_COMMAND }, async $ => openOffice($)).catch(() => ({
+    text: `Open ${officePageUrl(sessionId)} in your browser`,
+  }))
+  on('session.end', onSessionEnd)
+  on('turn.start', onTurnStart)
+  on('turn.complete', onTurnComplete)
+  // Observers only: if publishing throws, the spawn / tool call proceeds untouched.
+  on('agent.spawn', onAgentSpawn).catch(($, e, next) => next(e))
+  on('tool.call', onToolCall).catch(($, e, next) => next(e))
+  on('turn.step', onTurnStep)
 }

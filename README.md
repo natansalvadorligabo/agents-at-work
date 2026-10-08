@@ -1,0 +1,63 @@
+# Agents at Work
+
+> **Beta.** A Claude Code plugin that shows your session as a voxel office in the browser: the main agent
+> and every subagent walk to the bookshelf, the server rack or the whiteboard as they use tools, hand
+> tasks and results to each other in envelopes — and spend way too long at the coffee machine.
+
+## What you see
+
+| In the session                        | In the office                                                |
+| ------------------------------------- | ------------------------------------------------------------ |
+| `Read`, `Grep`, `Glob`…               | 📚 walks to the bookshelf                                    |
+| `Edit`, `Write`                       | ⌨️ types at the desk                                         |
+| `Bash`, `PowerShell`                  | 🖥️ operates the server rack                                  |
+| `WebSearch`, `WebFetch`               | 🌐 spins the globe                                           |
+| MCP tools                             | 📞 picks up the red phone                                    |
+| `TodoWrite`, plan mode, long thinking | 📝 writes on the whiteboard                                  |
+| A subagent is spawned                 | it walks in through the door and receives a sealed envelope  |
+| A subagent finishes                   | it delivers a green (success) or crumpled (failure) envelope |
+| Nothing happens for a while           | everyone naps and the lights dim                             |
+
+### The coffee machine
+
+Time at the coffee machine is **blocked time**:
+
+- A terminal command running for more than 10 s: _"☕ npm run build… compiling"_.
+- An agent waiting on its subagents for more than 3 s goes to _"☕ supervise"_ them from the coffee machine
+  (and gets told _"🙄 found you at the coffee machine, boss"_ on delivery).
+- If the command fails while the agent is on a break, it **spills its coffee** and runs back to its desk.
+- Two agents on a break start gossiping. From the fifth cup on, they shake: _"☕×5 I FEEL GREAT"_.
+- Click the coffee machine for the _Employee of the month (in reverse)_ ranking.
+
+The page speaks **Português (Brasil)** and **English (US)** — switch with the flags in the top-right corner.
+
+## Install
+
+```sh
+claude plugin install agents-at-work@<marketplace>   # or, from a clone:
+claude --plugin-dir /path/to/agents-at-work
+```
+
+Then, inside a session, run `/office` to open the office in your browser. The plugin starts a small
+local server on `127.0.0.1:47821` (Node ≥ 20) that only listens on your machine.
+
+## Develop
+
+```sh
+npm install
+npm test            # web + server tests (node --test) and hook tests (claude plugin test)
+npm run check       # prettier + typecheck + tests
+npm start           # run the office server alone
+npm run demo:coffee # fake a 2-minute session against the running server (open the printed URL)
+```
+
+| Path       | What lives there                                                                   |
+| ---------- | ---------------------------------------------------------------------------------- |
+| `hooks/`   | The Claude Code hooks module (TypeScript): turns session events into office events |
+| `shared/`  | The wire protocol shared by hooks, server and browser                              |
+| `server/`  | Node server: event intake, session store, server-sent events, static files         |
+| `web/src/` | The browser app (plain ES modules + JSDoc types, three.js r169 vendored)           |
+| `test/`    | `node --test` suites and named fakes                                               |
+| `tools/`   | Session simulators for demos                                                       |
+
+All code is type-checked (`tsc --checkJs`, strict) and formatted with Prettier.

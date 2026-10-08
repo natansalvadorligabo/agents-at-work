@@ -1,0 +1,4 @@
+node_modules
+web/vendor
+.claude-plugin/types
+package-lock.json

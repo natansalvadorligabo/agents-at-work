@@ -1,5 +1,11 @@
 {
-  "name": "escritorio-agentes",
-  "version": "0.2.0",
-  "description": "Escritório em voxel no navegador que mostra o agente principal e os subagentes trabalhando e trocando entregas."
+  "name": "agents-at-work",
+  "version": "0.1.0-beta.1",
+  "description": "A voxel office in your browser where the main agent and its subagents work, hand off tasks and take way too many coffee breaks.",
+  "author": {
+    "name": "natansalvadorligabo",
+    "url": "https://github.com/natansalvadorligabo"
+  },
+  "homepage": "https://github.com/natansalvadorligabo/agents-at-work",
+  "repository": "https://github.com/natansalvadorligabo/agents-at-work"
 }
