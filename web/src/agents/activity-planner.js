@@ -70,16 +70,18 @@ export function planActivity(input) {
 }
 
 /**
- * Waiting for someone to allow a tool call: the agent stays where it is and raises its hand.
+ * Waiting for someone to allow a tool call: the agent stays where it is and raises its hand, from its
+ * chair when it is at its desk.
  * @param {ActivityInput} input
  * @param {import('#shared/protocol.js').PermissionRequest} request
  * @returns {ActivityPlan}
  */
 function planPermissionWait({ currentTarget, translator }, request) {
   const what = toolBubbleText({ tool: request.tool, summary: request.summary }, translator)
+  const target = currentTarget ?? 'desk'
   return {
-    target: currentTarget ?? 'desk',
-    pose: 'raisingHand',
+    target,
+    pose: target === 'desk' ? 'raisingHandSeated' : 'raisingHand',
     bubble: translator.t('permission.bubble', { what }),
   }
 }

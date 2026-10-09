@@ -25,6 +25,7 @@
  *   The parent, or the main agent when the parent is gone or leaving.
  * @property {(agentId: string) => boolean} isAtCoffee
  * @property {(agentId: string) => number} childCountOf Subagents still in the office, leaving ones included.
+ * @property {(agentId: string) => number} arrivingChildCountOf Subagents on their way in for their task.
  * @property {(agentId: string) => void} removeAgent
  * @property {() => boolean} isIdle Nobody has done anything for a while: time for a nap.
  * @property {(name: SoundName) => void} playSound

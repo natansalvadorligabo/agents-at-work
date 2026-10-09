@@ -294,6 +294,7 @@ export class Office {
       parentCharacter: (parentId, childId) => roster.parentCharacter(parentId, childId),
       isAtCoffee: agentId => roster.get(agentId)?.controller.isAtCoffee ?? false,
       childCountOf: agentId => roster.childCountOf(agentId),
+      arrivingChildCountOf: agentId => roster.arrivingChildCountOf(agentId),
       removeAgent: agentId => this.#removeAgent(agentId),
       isIdle: () => this.#isIdle(),
       playSound: name => this.#deps.sounds.play(name),

@@ -1,4 +1,4 @@
-import { DOOR_INSIDE, isInsideRoom } from './layout.js'
+import { DOOR_INSIDE, isInsideRoom, seatSide } from './layout.js'
 
 const WALL_CLEARANCE = 0.3
 const DOOR_HALF_WIDTH = 0.4
@@ -11,7 +11,9 @@ const DOOR_HALF_WIDTH = 0.4
 
 /**
  * Plans a walk between two floor positions as a list of waypoints at tile centers, ending exactly on the
- * destination. Anything outside the room is reached through the door, the only opening.
+ * destination. Anything outside the room is reached through the door, the only opening. A seat (the one
+ * standing place on a blocked tile) is left and entered from beside its chair, never through the backrest
+ * or across the desk.
  * @param {PathGrid} grid
  * @param {FloorPosition} position
  * @param {Point2} destination
@@ -27,8 +29,18 @@ export function planRoute(grid, position, destination) {
     origin = DOOR_INSIDE
   }
   const insideTarget = isInsideRoom(destination[0], destination[1], grid.width) ? destination : DOOR_INSIDE
-  const cells = grid.findPath(toCell(origin), toCell(insideTarget))
-  for (const [x, z] of cells.slice(0, -1)) waypoints.push([x + 0.5, z + 0.5])
+  const leavesSeat = !isFreeAt(grid, origin)
+  const reachesSeat = !isFreeAt(grid, insideTarget)
+  const exit = leavesSeat ? seatSide(origin, insideTarget) : origin
+  const entry = reachesSeat ? seatSide(insideTarget, exit) : insideTarget
+  if (leavesSeat) waypoints.push(exit)
+  const start = grid.nearestFreeCellTo(exit[0], exit[1])
+  const goal = grid.nearestFreeCellTo(entry[0], entry[1])
+  if (!isSameCell(start, toCell(exit))) waypoints.push(centerOf(start))
+  const cells = grid.findPath(start, goal)
+  const approach = isSameCell(goal, toCell(entry)) ? cells.slice(0, -1) : cells
+  for (const cell of approach) waypoints.push(centerOf(cell))
+  if (reachesSeat) waypoints.push(entry)
   waypoints.push(insideTarget)
   if (insideTarget !== destination) waypoints.push(destination)
   return waypoints
@@ -78,6 +90,30 @@ export function canStandAt(grid, x, z) {
  */
 function toCell([x, z]) {
   return [Math.floor(x), Math.floor(z)]
+}
+
+/**
+ * @param {PathGrid} grid
+ * @param {Point2} point
+ */
+function isFreeAt(grid, [x, z]) {
+  return grid.isFree(Math.floor(x), Math.floor(z))
+}
+
+/**
+ * @param {Point2} cell
+ * @returns {Point2}
+ */
+function centerOf([x, z]) {
+  return [x + 0.5, z + 0.5]
+}
+
+/**
+ * @param {Point2} a
+ * @param {Point2} b
+ */
+function isSameCell(a, b) {
+  return a[0] === b[0] && a[1] === b[1]
 }
 
 /**

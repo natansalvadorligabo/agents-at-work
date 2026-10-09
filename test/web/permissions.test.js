@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { planActivity } from '../../web/src/agents/activity-planner.js'
+import { SEATED_POSES } from '../../web/src/agents/poses.js'
 import { ControlClient } from '../../web/src/app/control-client.js'
 import { takeControlKey } from '../../web/src/app/control-key.js'
 import { renderPermissionRequest } from '../../web/src/ui/permission-view.js'
@@ -86,6 +87,21 @@ describe('permission in the office', () => {
       pose: 'raisingHand',
       bubble: '🙋 Posso? 🖥️ Bash npm install',
     })
+  })
+
+  it('raises the hand from the chair when the agent is at its desk', () => {
+    const input = {
+      snapshot: agentSnapshot({ pendingPermission: REQUEST }),
+      now: 0,
+      currentTarget: /** @type {const} */ ('desk'),
+      thinkingSince: 0,
+      coffeeVisit: null,
+      officeIdle: false,
+      translator: translatorFor('en'),
+    }
+    const plan = planActivity(input)
+    assert.equal(plan.pose, 'raisingHandSeated')
+    assert.ok(SEATED_POSES.has(plan.pose), 'it stays sitting, legs out of the seat')
   })
 
   it('renders the card with enabled buttons only when the page holds the key', () => {

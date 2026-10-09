@@ -64,6 +64,8 @@ export class FakeOfficePorts {
   parentCharacter = (/** @type {string} */ parentId) => this.characters.get(parentId)
   isAtCoffee = (/** @type {string} */ agentId) => this.atCoffee.has(agentId)
   childCountOf = () => this.childCount
+  arrivingChildCount = 0
+  arrivingChildCountOf = () => this.arrivingChildCount
   removeAgent = (/** @type {string} */ agentId) => void this.removed.push(agentId)
   isIdle = () => this.idle
   /** @type {string[]} */

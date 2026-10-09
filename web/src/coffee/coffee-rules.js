@@ -13,6 +13,7 @@ import { DELEGATION_TOOLS, categoryOfTool } from '../agents/tool-catalog.js'
  * @property {number} now Epoch milliseconds.
  * @property {boolean} thinking
  * @property {number} childCount Subagents this agent spawned that are still around.
+ * @property {number} [arrivingChildCount] Of those, the ones still coming in for their task envelope.
  * @property {boolean} atCoffee Already on a coffee break (no new waiting period needed).
  */
 
@@ -59,7 +60,9 @@ export class CoffeeReasoner {
     const { currentTool, now, thinking } = situation
     if (currentTool && isLongCompile(currentTool, now)) return this.#compilingVisit(currentTool)
     const busyElsewhere = currentTool ? !DELEGATION_TOOLS.test(currentTool.tool) : thinking
-    if (busyElsewhere || situation.childCount === 0) return this.#stopWaiting()
+    // Still handing out tasks: new hires come to the desk for their envelope, so it stays there.
+    const handingOut = (situation.arrivingChildCount ?? 0) > 0
+    if (busyElsewhere || handingOut || situation.childCount === 0) return this.#stopWaiting()
     return this.#delegationVisit(situation)
   }
 

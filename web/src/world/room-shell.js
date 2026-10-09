@@ -9,6 +9,11 @@ const WALL_COLOR = 0xe6dccb
 const SKIRTING_COLOR = 0x8c6b4a
 const SKIRTING_HEIGHT = 0.18
 const DOOR_HEIGHT = 2.2
+// Two faces in the same plane flicker as the camera turns (z-fighting), so no two faces here share one:
+// the walls stop inside the door frame's posts (z 5.875 to 6 and 7 to 7.125), the skirting runs a little
+// past the wall's free ends to cover them, and the back wall alone fills the corner.
+const DOOR_JAMB_INSET = 0.06
+const SKIRTING_WRAP = 0.02
 
 /**
  * The room itself: a checkered floor, the back wall (which stretches as desks are added) and the left wall
@@ -37,10 +42,11 @@ export class RoomShell {
    */
   resize(width) {
     this.#tileFloor(width)
-    const length = width + WALL_THICKNESS
-    for (const mesh of [this.backWall, this.backSkirting]) mesh.scale.x = length
-    this.backWall.position.set(width / 2 - WALL_THICKNESS / 2, WALL_HEIGHT / 2, -WALL_THICKNESS / 2)
-    this.backSkirting.position.set(width / 2 - WALL_THICKNESS / 2, SKIRTING_HEIGHT / 2, -WALL_THICKNESS / 2)
+    const center = width / 2 - WALL_THICKNESS / 2
+    this.backWall.scale.x = width + WALL_THICKNESS
+    this.backWall.position.set(center, WALL_HEIGHT / 2, -WALL_THICKNESS / 2)
+    this.backSkirting.scale.x = width + WALL_THICKNESS + 2 * SKIRTING_WRAP
+    this.backSkirting.position.set(center, SKIRTING_HEIGHT / 2, -WALL_THICKNESS / 2)
   }
 
   /** @param {number} width */
@@ -61,27 +67,45 @@ export class RoomShell {
 
   /** @returns {Mesh[]} Two wall segments around the door, with their skirting, and the lintel. */
   #leftWall() {
-    const segments = [
-      [-WALL_THICKNESS, DOOR_ROW],
-      [DOOR_ROW + 1, ROOM_DEPTH],
-    ].flatMap(([start = 0, end = 0]) => this.#leftWallSegment(start, end))
-    const lintel = this.#box(WALL_THICKNESS, WALL_HEIGHT - DOOR_HEIGHT, 1, this.#wallMaterial)
+    const doorStart = DOOR_ROW - DOOR_JAMB_INSET
+    const doorEnd = DOOR_ROW + 1 + DOOR_JAMB_INSET
+    const lintelDepth = doorEnd - doorStart
+    const lintel = this.#box(WALL_THICKNESS, WALL_HEIGHT - DOOR_HEIGHT, lintelDepth, this.#wallMaterial)
     lintel.position.set(-WALL_THICKNESS / 2, DOOR_HEIGHT + (WALL_HEIGHT - DOOR_HEIGHT) / 2, DOOR_ROW + 0.5)
-    return [...segments, lintel]
+    return [
+      this.#wallSlab(0, doorStart, WALL_HEIGHT, WALL_THICKNESS, this.#wallMaterial),
+      this.#wallSlab(
+        SKIRTING_WRAP,
+        doorStart,
+        SKIRTING_HEIGHT,
+        WALL_THICKNESS + 0.04,
+        this.#skirtingMaterial,
+      ),
+      this.#wallSlab(doorEnd, ROOM_DEPTH, WALL_HEIGHT, WALL_THICKNESS, this.#wallMaterial),
+      this.#wallSlab(
+        doorEnd,
+        ROOM_DEPTH + SKIRTING_WRAP,
+        SKIRTING_HEIGHT,
+        WALL_THICKNESS + 0.04,
+        this.#skirtingMaterial,
+      ),
+      lintel,
+    ]
   }
 
   /**
+   * A slab along the left wall, from `start` to `end` on the z axis.
    * @param {number} start
    * @param {number} end
-   * @returns {Mesh[]}
+   * @param {number} height
+   * @param {number} thickness
+   * @param {MeshLambertMaterial} material
+   * @returns {Mesh}
    */
-  #leftWallSegment(start, end) {
-    const length = end - start
-    const wall = this.#box(WALL_THICKNESS, WALL_HEIGHT, length, this.#wallMaterial)
-    wall.position.set(-WALL_THICKNESS / 2, WALL_HEIGHT / 2, start + length / 2)
-    const skirting = this.#box(WALL_THICKNESS + 0.04, SKIRTING_HEIGHT, length, this.#skirtingMaterial)
-    skirting.position.set(-WALL_THICKNESS / 2, SKIRTING_HEIGHT / 2, start + length / 2)
-    return [wall, skirting]
+  #wallSlab(start, end, height, thickness, material) {
+    const slab = this.#box(thickness, height, end - start, material)
+    slab.position.set(-WALL_THICKNESS / 2, height / 2, (start + end) / 2)
+    return slab
   }
 
   /**

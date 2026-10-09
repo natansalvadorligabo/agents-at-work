@@ -111,6 +111,26 @@ export class PathGrid {
   }
 
   /**
+   * The free cell whose center is closest to a floor point, among the nearest ring that has any; the
+   * point's own cell when it is free. A seat on a blocked chair tile resolves to the tile in front of it,
+   * not to one beside the desk.
+   * @param {number} x
+   * @param {number} z
+   * @returns {Cell}
+   * @example grid.nearestFreeCellTo(2, 4.3) // [2, 5] when the chair takes [1, 4] and [2, 4]
+   */
+  nearestFreeCellTo(x, z) {
+    const [cellX, cellZ] = [Math.floor(x), Math.floor(z)]
+    if (this.isFree(cellX, cellZ)) return [cellX, cellZ]
+    const distance = (/** @type {Cell} */ [cx, cz]) => Math.hypot(cx + 0.5 - x, cz + 0.5 - z)
+    for (let radius = 1; radius < Math.max(this.width, this.depth); radius++) {
+      const free = ringCells(cellX, cellZ, radius).filter(([cx, cz]) => this.isFree(cx, cz))
+      if (free.length > 0) return free.reduce((best, cell) => (distance(cell) < distance(best) ? cell : best))
+    }
+    return [cellX, cellZ]
+  }
+
+  /**
    * Walkable neighbors. Diagonals need both orthogonal neighbors free, so characters do not cut furniture corners.
    * @param {number} x
    * @param {number} z

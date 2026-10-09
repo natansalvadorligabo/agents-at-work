@@ -9,6 +9,7 @@ import {
   deskSlotTile,
   requiredRoomWidth,
   seatAt,
+  seatSide,
 } from '../../web/src/world/layout.js'
 import { canStandAt, markOccupied, planRoute } from '../../web/src/world/navigation.js'
 import { PathGrid } from '../../web/src/world/path-grid.js'
@@ -74,24 +75,69 @@ describe('separateCrowd', () => {
 
   it('does not push anyone into furniture', () => {
     const grid = officeGrid()
-    const seated = member(2, 4.3, { fixed: true })
-    const standing = member(2.3, 4.05)
+    // Someone frozen in a hand-off pushes the other towards the boss's chair.
+    const seated = member(3.6, 4.5, { fixed: true })
+    const standing = member(3.15, 4.3)
     simulate([seated, standing], 60, (x, z) => canStandAt(grid, x, z))
     assert.ok(canStandAt(grid, standing.position.x, standing.position.z))
   })
 })
 
 describe('route planning around people', () => {
-  it('goes around a seated agent when there is room to', () => {
+  it('goes around someone standing still when there is room to', () => {
     const grid = officeGrid()
-    const [seatX, seatZ] = seatAt(deskSlotTile(0))
-    const crossesSeat = () =>
-      planRoute(grid, { x: 4.5, z: 4.5 }, [8.5, 4.5]).some(
-        ([x, z]) => Math.hypot(x - seatX, z - seatZ) < PERSONAL_SPACE,
+    const someone = { x: 10.5, z: 4.5 }
+    const crossesThem = () =>
+      planRoute(grid, { x: 8.5, z: 4.5 }, [12.5, 4.5]).some(
+        ([x, z]) => Math.hypot(x - someone.x, z - someone.z) < PERSONAL_SPACE,
       )
-    assert.ok(crossesSeat(), 'the straight route passes through the seat')
-    markOccupied(grid, [{ x: seatX, z: seatZ }])
-    assert.ok(!crossesSeat())
+    assert.ok(crossesThem(), 'the straight route passes through them')
+    markOccupied(grid, [someone])
+    assert.ok(!crossesThem())
+  })
+
+  it('never walks through a chair, and its own agent gets in from beside it', () => {
+    const grid = officeGrid()
+    const seat = seatAt(deskSlotTile(0))
+    const route = planRoute(grid, { x: 3.5, z: 1.5 }, seat)
+    const [beforeX = 0, beforeZ = 0] = route.at(-2) ?? []
+    assert.deepEqual(route.at(-1), seat)
+    assert.deepEqual([beforeX, beforeZ], seatSide(seat, [3.5, 1.5]))
+    assert.ok(Math.abs(beforeX - seat[0]) > 0.5, 'it steps in from the side, not through the backrest')
+    const inChair = (/** @type {readonly [number, number]} */ [x, z]) =>
+      Math.abs(x - seat[0]) < 0.5 && Math.abs(z - (seat[1] + 0.15)) < 0.45
+    assert.ok(
+      route.slice(0, -1).every(point => !inChair(point)),
+      'only the seat itself is in the chair',
+    )
+  })
+
+  it('uses the side of the chair closer to where the agent comes from', () => {
+    const grid = officeGrid()
+    const seat = seatAt(deskSlotTile(0))
+    const fromLeft = planRoute(grid, { x: 1.5, z: 6.5 }, seat).at(-2) ?? [0, 0]
+    const fromRight = planRoute(grid, { x: 11.5, z: 5.5 }, seat).at(-2) ?? [0, 0]
+    assert.ok(fromLeft[0] < seat[0], 'from the left it gets in on the left')
+    assert.ok(fromRight[0] > seat[0], 'from the right it gets in on the right')
+  })
+
+  it('gets out of the chair beside it, not through the backrest or across the desk', () => {
+    const grid = officeGrid()
+    const seat = seatAt(MAIN_DESK)
+    const route = planRoute(grid, { x: seat[0], z: seat[1] }, [6.5, 1.45])
+    assert.deepEqual(route[0], seatSide(seat, [6.5, 1.45]))
+  })
+
+  it('walks past other desks without crossing their chairs', () => {
+    const grid = officeGrid(4)
+    const chairs = [MAIN_DESK, ...[0, 1, 2, 3].map(deskSlotTile)].map(({ x, z }) => ({ x, z: z + 1 }))
+    const route = planRoute(grid, { x: -1.1, z: 6.5 }, [12.4, 1.3])
+    for (const [x, z] of route) {
+      for (const chair of chairs) {
+        const inside = x >= chair.x && x < chair.x + 2 && z >= chair.z && z < chair.z + 1
+        assert.ok(!inside, `waypoint ${x},${z} is in the chair at ${chair.x},${chair.z}`)
+      }
+    }
   })
 
   it('lets bodies stand in the corridor and the doorway but not inside the wall', () => {

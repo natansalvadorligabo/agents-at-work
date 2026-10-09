@@ -43,6 +43,8 @@ const GRUMBLE_MS = 1800
  */
 export class AgentController {
   leaving = false
+  /** On its way in for its task envelope: its parent should stay at the desk to hand it over. */
+  arriving = false
   /** @type {TargetName | null} */
   #currentTarget = null
   #arrived = false
@@ -127,6 +129,7 @@ export class AgentController {
 
   /** @param {number} now */
   update(now) {
+    this.character.seat = this.#ports.seatOf(this.id)
     this.#walker.update(now)
     if (this.isBusy || this.character.isLocked) return
     this.#updateFreeActivity()
@@ -143,7 +146,14 @@ export class AgentController {
 
   /** @param {string} parentId */
   arrive(parentId) {
-    return this.#scripts.enqueue(() => arrivalScript(this.#scriptContext, parentId))
+    this.arriving = true
+    return this.#scripts.enqueue(async () => {
+      try {
+        await arrivalScript(this.#scriptContext, parentId)
+      } finally {
+        this.arriving = false
+      }
+    })
   }
 
   /**
@@ -206,6 +216,7 @@ export class AgentController {
       now,
       thinking: this.snapshot.thinking,
       childCount: this.#ports.childCountOf(this.id),
+      arrivingChildCount: this.#ports.arrivingChildCountOf(this.id),
       atCoffee: this.#currentTarget === 'coffee',
     })
     // The visit is kept after the reason goes away so the outcome of its command can still be checked.
@@ -233,6 +244,7 @@ export class AgentController {
     if (plan.bubble) this.character.bubble.show(plan.bubble)
     else this.character.bubble.hide()
     if (plan.target !== this.#currentTarget) this.#headTo(plan.target)
+    else if (this.#arrived && plan.target === 'desk' && !this.character.isOnSeat) this.#headTo('desk')
     if (this.#arrived) this.#faceWhileThere(plan.target)
     this.character.setPose(this.#arrived ? plan.pose : 'standing')
     const ongoing = this.#arrived ? ONGOING_SOUNDS[plan.pose] : undefined

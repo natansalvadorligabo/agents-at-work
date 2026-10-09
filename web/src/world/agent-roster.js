@@ -73,6 +73,17 @@ export class AgentRoster {
   }
 
   /**
+   * Subagents of the parent still on their way in for their task envelope.
+   * @param {string} parentId
+   * @returns {number}
+   */
+  arrivingChildCountOf(parentId) {
+    return this.controllers().filter(
+      controller => controller.snapshot.parentId === parentId && controller.arriving,
+    ).length
+  }
+
+  /**
    * The parent to deliver to, falling back to the main agent when the parent is gone or leaving itself.
    * @param {string} parentId
    * @param {string} childId

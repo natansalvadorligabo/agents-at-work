@@ -6,7 +6,7 @@ import { VOXEL_SIZE as V, createVoxelMesh } from '../voxel/voxel-mesh.js'
 import { nameplateHtml } from './agent-names.js'
 import { buildCharacterRig } from './character-rig.js'
 import { advanceAlongPath, approach, lerpAngle } from './motion.js'
-import { poseTargets } from './poses.js'
+import { SEATED_POSES, poseTargets } from './poses.js'
 import { SpeechBubble } from './speech-bubble.js'
 
 /**
@@ -37,6 +37,11 @@ const SCALE_SPEED = 9
 const HEAD_HEIGHT = 22 * V
 const JOINT_BLEND = 0.25
 const LIFT_BLEND = 0.3
+// Sitting down or getting up blends the legs and the body more slowly, so it reads as a movement.
+const SIT_BLEND = 0.1
+const SIT_TRANSITION_MS = 450
+// A seated pose only shows this close to the seat; anywhere else the legs would go through the chair.
+const SEAT_REACH = 0.2
 const VISIBLE_SCALE = 0.3
 const VANISHED_SCALE = 0.02
 
@@ -49,6 +54,10 @@ const VANISHED_SCALE = 0.02
  * character.followPath([[3, 4], [5, 4]])
  */
 export class Character {
+  /** @type {Point2 | null} Where it sits; set by its controller. */
+  seat = null
+  #shownSeated = false
+  #sitTransitionUntil = 0
   /** @type {Vector3[]} */
   waypoints = []
   heading = 0
@@ -92,6 +101,12 @@ export class Character {
 
   get isWalking() {
     return this.waypoints.length > 0
+  }
+
+  /** Whether the character is on its seat, where a seated pose can show; true when it has none known. */
+  get isOnSeat() {
+    if (!this.seat) return true
+    return Math.hypot(this.position.x - this.seat[0], this.position.z - this.seat[1]) <= SEAT_REACH
   }
 
   get isLocked() {
@@ -246,21 +261,48 @@ export class Character {
   }
 
   #applyPose() {
-    const pose = this.isWalking ? 'walking' : this.pose
+    const pose = this.#shownPose()
     const target = poseTargets(pose, {
       time: this.#animationTime,
       carrying: Boolean(this.carried),
       phase: this.id.length,
     })
+    const sitting = this.#clock.now() < this.#sitTransitionUntil
+    const legBlend = sitting ? SIT_BLEND : JOINT_BLEND
     const { leftLeg, rightLeg, leftArm, rightArm, head, body } = this.rig
-    leftLeg.rotation.x = approach(leftLeg.rotation.x, target.leftLeg, JOINT_BLEND)
-    rightLeg.rotation.x = approach(rightLeg.rotation.x, target.rightLeg, JOINT_BLEND)
+    leftLeg.rotation.x = approach(leftLeg.rotation.x, target.leftLeg, legBlend)
+    rightLeg.rotation.x = approach(rightLeg.rotation.x, target.rightLeg, legBlend)
     leftArm.rotation.x = approach(leftArm.rotation.x, target.leftArm, JOINT_BLEND)
     rightArm.rotation.x = approach(rightArm.rotation.x, target.rightArm, JOINT_BLEND)
     rightArm.rotation.z = approach(rightArm.rotation.z, target.rightArmSpread, JOINT_BLEND)
     head.rotation.x = approach(head.rotation.x, target.headPitch, JOINT_BLEND)
     head.rotation.z = approach(head.rotation.z, target.headRoll, JOINT_BLEND)
-    body.position.y = approach(body.position.y, target.bodyLift, LIFT_BLEND)
+    body.position.y = approach(body.position.y, target.bodyLift, sitting ? SIT_BLEND : LIFT_BLEND)
+  }
+
+  /**
+   * The pose drawn this frame: walking while on the move, standing instead of sitting anywhere but on the
+   * seat, and sitting instead of standing idle on it (its legs would go through the chair). Switching
+   * between sitting and standing starts the slower sit-down blend.
+   * @returns {PoseName}
+   */
+  #shownPose() {
+    if (this.isWalking) return this.#noteShown('walking')
+    const wantsSeat = SEATED_POSES.has(this.pose)
+    if (wantsSeat && !this.isOnSeat) return this.#noteShown('standing')
+    if (this.pose === 'standing' && this.seat && this.isOnSeat) return this.#noteShown('seated')
+    return this.#noteShown(this.pose)
+  }
+
+  /**
+   * @param {PoseName} pose
+   * @returns {PoseName}
+   */
+  #noteShown(pose) {
+    const seated = SEATED_POSES.has(pose)
+    if (seated !== this.#shownSeated) this.#sitTransitionUntil = this.#clock.now() + SIT_TRANSITION_MS
+    this.#shownSeated = seated
+    return pose
   }
 
   // Jitter after too many coffees; deterministic per frame so it needs no random source.

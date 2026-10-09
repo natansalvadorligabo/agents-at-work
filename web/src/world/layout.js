@@ -88,6 +88,29 @@ export function seatAt(desk) {
   return [desk.x + 1, desk.z + 1.3]
 }
 
+// Agents sit facing their monitor, so the chair's backrest faces the room: they get in and out from
+// beside the chair, never through the backrest.
+const SEAT_SIDE_STEP = 0.8
+const SEAT_SIDE_FORWARD = 0.2
+
+/**
+ * Where an agent stands to get into or out of the chair at a seat: beside it, on whichever side is
+ * closer to where it comes from or goes to.
+ * @param {Point2} seat
+ * @param {Point2} toward
+ * @returns {Point2}
+ * @example seatSide([2, 4.3], [6, 1]) // [2.8, 4.5], the right side
+ */
+export function seatSide([x, z], [towardX, towardZ]) {
+  /** @type {Point2[]} */
+  const sides = [
+    [x - SEAT_SIDE_STEP, z + SEAT_SIDE_FORWARD],
+    [x + SEAT_SIDE_STEP, z + SEAT_SIDE_FORWARD],
+  ]
+  const distance = (/** @type {Point2} */ [sideX, sideZ]) => Math.hypot(sideX - towardX, sideZ - towardZ)
+  return sides.reduce((best, side) => (distance(side) < distance(best) ? side : best))
+}
+
 /**
  * Room width needed so every occupied desk slot fits, never narrower than the starting room.
  * @param {Iterable<number>} occupiedSlots
@@ -101,10 +124,11 @@ export function requiredRoomWidth(occupiedSlots) {
 }
 
 /**
- * Every tile agents cannot walk on, given the occupied desk slots.
+ * Every tile agents cannot walk on, given the occupied desk slots: each desk takes two tiles and its
+ * chair the two in front of them. Only the agent sitting there walks into its chair (see planRoute).
  * @param {Iterable<number>} occupiedSlots
  * @returns {Point2[]}
- * @example blockedTiles([]).length // 13
+ * @example blockedTiles([]).length // 15
  */
 export function blockedTiles(occupiedSlots) {
   const desks = [MAIN_DESK, ...[...occupiedSlots].map(deskSlotTile)]
@@ -112,6 +136,8 @@ export function blockedTiles(occupiedSlots) {
   const deskTiles = desks.flatMap(({ x, z }) => [
     [x, z],
     [x + 1, z],
+    [x, z + 1],
+    [x + 1, z + 1],
   ])
   return [...FIXED_BLOCKED_TILES, ...deskTiles]
 }
