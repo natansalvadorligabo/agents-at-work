@@ -4,6 +4,8 @@
 > and every subagent walk to the bookshelf, the server rack or the whiteboard as they use tools, hand
 > tasks and results to each other in envelopes — and spend way too long at the coffee machine.
 
+▶️ **[Watch 40 seconds of the office, with sound](docs/media/showcase.mp4)**
+
 ## What you see
 
 | In the session                        | In the office                                                |
@@ -76,6 +78,7 @@ npm run check       # prettier + typecheck + tests
 npm start           # run the office server alone
 npm run demo:coffee # fake a 2-minute session against the running server (open the printed URL)
 npm run demo:permission # raise a fake permission request and wait for Allow / Deny
+npm run demo:showcase # everything at once: hires, every station, coffee, a raised hand, a desk punch
 ```
 
 | Path       | What lives there                                                                   |
