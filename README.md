@@ -4,7 +4,9 @@
 > and every subagent walk to the bookshelf, the server rack or the whiteboard as they use tools, hand
 > tasks and results to each other in envelopes — and spend way too long at the coffee machine.
 
-▶️ **[Watch 40 seconds of the office, with sound](docs/media/showcase.mp4)**
+[![The office at work: new hires get their envelopes, everyone works at the stations, long builds turn into coffee and gossip, and a failing test ends in a desk punch](docs/media/showcase.gif)](docs/media/showcase.mp4)
+
+▶️ **[Watch it with sound](docs/media/showcase.mp4)** (the sound effects are half the fun)
 
 ## What you see
 
