@@ -1,6 +1,6 @@
 # Agents at Work
 
-> **Beta.** A Claude Code plugin that shows your session as a voxel office in the browser: the main agent
+> **Beta.** A Claude Code mod (installed like a plugin) that shows your session as a voxel office in the browser: the main agent
 > and every subagent walk to the bookshelf, the server rack or the whiteboard as they use tools, hand
 > tasks and results to each other in envelopes — and spend way too long at the coffee machine.
 
@@ -40,7 +40,7 @@ The page speaks **Português (Brasil)** and **English (US)** — switch with the
 When Claude Code would ask permission for a tool call, the agent **raises its hand** in the office and
 its panel shows **Allow / Deny**. Answer there, or wait 60 s and the usual terminal dialog appears. With
 no office page open, nothing changes: the terminal asks right away. Questions (`AskUserQuestion`) and
-plan approval stay in the terminal — Claude Code only lets plugins tighten those.
+plan approval stay in the terminal — Claude Code only lets mods tighten those.
 
 ### Drive the agents from the office
 
@@ -54,11 +54,11 @@ Click an agent and use its panel the way you would use the terminal:
 
 Only the page opened by `/office` can answer: the link carries a per-session secret key (removed from
 the address bar on load). The server also refuses requests from other web sites, foreign host names
-(DNS rebinding) and browsers on the routes reserved for the plugin.
+(DNS rebinding) and browsers on the routes reserved for the mod.
 
 ## Install
 
-Requirements: **Claude Code 2.1.29x or newer** (the plugin uses the early-access function hooks API) and
+Requirements: **Claude Code 2.1.29x or newer** (the mod uses the early-access function hooks API: a `hooks.json` module that runs inside Claude Code) and
 **Node.js 20+** on your `PATH` (the office server runs on Node). Nothing else: no `npm install` needed.
 
 ```sh
@@ -66,7 +66,7 @@ claude plugin marketplace add natansalvadorligabo/agents-at-work
 claude plugin install agents-at-work@agents-at-work
 ```
 
-Start a new session and run `/office`: the office opens in your browser. The plugin starts a small
+Start a new session and run `/office`: the office opens in your browser. The mod starts a small
 server on `127.0.0.1:47821` that only listens on your machine.
 
 To try a local clone instead: `claude --plugin-dir /path/to/agents-at-work`.
