@@ -47,10 +47,15 @@ function browserStorage(name) {
 }
 
 // The key arrives in the /office link; it is moved to tab storage and dropped from the address bar.
-function createControlClient() {
+/** @param {SessionSync} sync */
+function createControlClient(sync) {
   const { key, cleanUrl } = takeControlKey(new URL(location.href), browserStorage('sessionStorage'))
   history.replaceState(null, '', cleanUrl)
-  return new ControlClient({ fetch: (url, init) => window.fetch(url, init), key })
+  return new ControlClient({
+    fetch: (url, init) => window.fetch(url, init),
+    key,
+    sessionId: () => sync.sessionId,
+  })
 }
 
 /** @param {LocalePreference} preference */
@@ -156,9 +161,9 @@ function createHeader(office, translator) {
  * @param {Office} office
  * @param {SessionSync} sync
  * @param {Translator} translator
- * @param {ControlClient} permissions
+ * @param {ControlClient} control
  */
-function createPanel(office, sync, translator, permissions) {
+function createPanel(office, sync, translator, control) {
   return new DetailsPanel({
     element: byId('panel'),
     snapshotOf: agentId => sync.snapshotOf(agentId),
@@ -167,7 +172,7 @@ function createPanel(office, sync, translator, permissions) {
     clock: systemClock,
     timer: systemIntervalTimer,
     nextFrame: callback => void requestAnimationFrame(() => callback()),
-    permissions,
+    control,
   })
 }
 
@@ -196,8 +201,9 @@ function start() {
     onAgentChanged: agentId => panelRef.current?.notifyAgentChanged(agentId),
     onPermissionRequested: agentId => panelRef.current?.openAgent(agentId),
     sessionId: params.get('session'),
+    now: systemClock.now,
   })
-  panelRef.current = createPanel(office, sync, translator, createControlClient())
+  panelRef.current = createPanel(office, sync, translator, createControlClient(sync))
   wireSelection(office, canvas, panelRef.current)
   connectStream(sync, header)
 }

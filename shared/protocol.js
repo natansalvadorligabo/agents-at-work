@@ -43,6 +43,17 @@ export const PermissionDecision = Object.freeze({
   EXPIRED: 'expired',
 })
 
+/**
+ * What the office page can ask the session to do, as the terminal would: prompt the main agent, message a
+ * subagent (resuming it when it already finished), stop an agent's running turn, or spawn a subagent.
+ */
+export const CommandKind = Object.freeze({
+  PROMPT: 'prompt',
+  MESSAGE: 'message',
+  STOP: 'stop',
+  SPAWN: 'spawn',
+})
+
 /** Header carrying the session's control key on requests that act on the session. */
 export const CONTROL_KEY_HEADER = 'x-agents-at-work-key'
 
@@ -66,6 +77,7 @@ export const Route = Object.freeze({
   HEALTH: '/health',
   CONTROL_REGISTER: '/control/register',
   PERMISSIONS: '/permissions',
+  COMMANDS: '/commands',
 })
 
 /** Server-sent event names on the `/stream` route. */
@@ -78,6 +90,24 @@ export const StreamMessage = Object.freeze({
  * @typedef {(typeof EventType)[keyof typeof EventType]} EventTypeName
  * @typedef {(typeof AgentStatus)[keyof typeof AgentStatus]} AgentStatusName
  * @typedef {(typeof PermissionDecision)[keyof typeof PermissionDecision]} PermissionDecisionName
+ * @typedef {(typeof CommandKind)[keyof typeof CommandKind]} CommandKindName
+ */
+
+/**
+ * A command from the office page, as the hooks module receives it. `text` is the prompt or message (the
+ * spawned subagent's task for `spawn`); `description` and `subagentType` only travel with `spawn`.
+ * @typedef {object} OfficeCommand
+ * @property {string} id
+ * @property {CommandKindName} kind
+ * @property {string} agentId
+ * @property {string} [text]
+ * @property {string} [description]
+ * @property {string} [subagentType]
+ */
+
+/**
+ * How the session took a command: `ok`, or the reason it could not.
+ * @typedef {{ ok: true } | { ok: false, error: string }} CommandOutcome
  */
 
 /**

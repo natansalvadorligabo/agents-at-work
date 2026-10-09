@@ -4,6 +4,9 @@ import {
   decidePermission,
   openPermissionRequest,
   registerControlKey,
+  reportCommandResult,
+  submitCommand,
+  takeCommands,
   withdrawPermissionRequest,
 } from './control-routes.js'
 import { EventValidationError, parseEventBatch } from './event-validation.js'
@@ -30,6 +33,7 @@ import { isFromOutsideBrowser, isLoopbackHost, isSameOriginOrNone } from './requ
 
 const JSON_HEADERS = { 'content-type': 'application/json' }
 const PERMISSION_PATH = /^\/permissions\/([\w.-]+)(\/decision)?$/
+const COMMAND_RESULT_PATH = /^\/commands\/([\w.-]+)\/result$/
 
 /**
  * Builds the server's request listener: event intake, the live stream, permissions, health check and
@@ -91,6 +95,8 @@ async function route(exchange) {
   const permission = PERMISSION_PATH.exec(url.pathname)
   if (permission)
     return reply(response, await routePermission(exchange, permission[1] ?? '', Boolean(permission[2])))
+  if (url.pathname === Route.COMMANDS || COMMAND_RESULT_PATH.test(url.pathname))
+    return reply(response, await routeCommand(exchange))
   if (request.method === 'POST') return routePost(exchange)
   if (url.pathname === Route.HEALTH) return void response.writeHead(200, JSON_HEADERS).end('{"ok":true}')
   if (url.pathname === Route.STREAM) return openStream(exchange)
@@ -127,6 +133,23 @@ async function routePermission({ dependencies, request, url }, requestId, isDeci
   requireOutsideBrowser(request)
   if (request.method === 'GET') return awaitPermissionDecision(dependencies, requestId, url)
   if (request.method === 'DELETE') return withdrawPermissionRequest(dependencies, requestId)
+  throw new HttpError(405, `${request.method} ${url.pathname} is not supported`)
+}
+
+/**
+ * The page posts commands (with the control key); the hooks module long-polls them and reports results.
+ * @param {Exchange} exchange
+ * @returns {Promise<ControlReply>}
+ */
+async function routeCommand({ dependencies, request, url }) {
+  if (url.pathname === Route.COMMANDS && request.method === 'POST') {
+    return submitCommand(dependencies, request.headers, await readBody(request))
+  }
+  requireOutsideBrowser(request)
+  if (url.pathname === Route.COMMANDS && request.method === 'GET') return takeCommands(dependencies, url)
+  const result = COMMAND_RESULT_PATH.exec(url.pathname)
+  if (result && request.method === 'POST')
+    return reportCommandResult(dependencies, result[1] ?? '', await readBody(request))
   throw new HttpError(405, `${request.method} ${url.pathname} is not supported`)
 }
 

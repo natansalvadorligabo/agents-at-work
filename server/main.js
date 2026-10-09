@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_PORT } from '#shared/protocol.js'
+import { CommandDesk } from './command-desk.js'
 import { ControlKeys } from './control-keys.js'
 import { createRequestListener } from './http-app.js'
 import { PermissionDesk, systemTimeouts } from './permission-desk.js'
@@ -27,6 +29,8 @@ const listener = createRequestListener({
   hub: new StreamHub({ timer: systemIntervalTimer }),
   desk: new PermissionDesk({ timeouts: systemTimeouts }),
   keys: new ControlKeys(),
+  commands: new CommandDesk({ timeouts: systemTimeouts }),
+  newId: randomUUID,
   staticFiles,
   port,
   now: Date.now,

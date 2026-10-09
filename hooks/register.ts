@@ -3,12 +3,22 @@ import { DEFAULT_PORT, EventType, MAIN_AGENT_ID } from '../shared/protocol.js'
 import { EventQueue } from './lib/event-queue.js'
 import type { OutgoingEvent } from './lib/event-queue.js'
 import {
+  COMMAND_POLL_WAIT_MS,
+  COMMAND_RETRY_MS,
+  RunningTurns,
+  failure,
+  readCommands,
+} from './lib/office-commands.js'
+import type { CommandOutcome, OfficeCommand } from './lib/office-commands.js'
+import {
   CONTROL_REGISTER_URL,
   EVENTS_URL,
   HEALTH_URL,
   PERMISSIONS_URL,
   SERVER_PORT_ENV,
   browserOpenCommands,
+  commandResultUrl,
+  commandsUrl,
   officePageUrl,
   permissionUrl,
 } from './lib/office-config.js'
@@ -42,6 +52,9 @@ const queue = new EventQueue(() => Date.now())
 const controlKey = createControlKey(crypto)
 let sessionId = ''
 let launchingServer = false
+let pollingCommands = false
+let sessionOver = false
+const runningTurns = new RunningTurns()
 
 function publish($: EngineInterface, event: OutgoingEvent): void {
   queue.enqueue(event)
@@ -150,6 +163,8 @@ async function registerControlKey($: EngineInterface): Promise<void> {
 
 async function openOffice($: EngineInterface): Promise<{ text: string }> {
   await waitForOfficeServer($)
+  // The session.start of a new session goes out while the server is still starting, and is dropped.
+  publish($, { type: EventType.SESSION_START })
   await registerControlKey($)
   const url = officePageUrl(sessionId, controlKey)
   const opened = await openInBrowser($, url)
@@ -222,6 +237,94 @@ async function askOffice($: EngineInterface, question: PermissionQuestion): Prom
   }
 }
 
+// The office page drives the session through these, the same calls the terminal makes: Claude Code is
+// only the engine.
+
+async function runCommand($: EngineInterface, command: OfficeCommand): Promise<CommandOutcome> {
+  switch (command.kind) {
+    case 'prompt': {
+      const entered = await $.prompt.submit({ text: command.text, asUser: true })
+      return 'drop' in entered && entered.drop !== undefined ? failure(entered.drop) : { ok: true }
+    }
+    case 'message': {
+      const sent = await $.session.send({ to: { agentId: command.agentId }, text: command.text })
+      return sent.isDelivered ? { ok: true } : failure(sent.reason)
+    }
+    case 'stop': {
+      const turnId = runningTurns.of(command.agentId)
+      if (turnId === undefined) return failure(`No running turn for agent ${command.agentId}`)
+      await $.turn.abort({ turnId })
+      return { ok: true }
+    }
+    case 'spawn':
+      return spawnFromOffice($, command)
+  }
+}
+
+// `$.agent.spawn` skips this plugin's own `agent.spawn` hook, so the office hears about the hire here.
+async function spawnFromOffice(
+  $: EngineInterface,
+  command: Extract<OfficeCommand, { kind: 'spawn' }>,
+): Promise<CommandOutcome> {
+  const { text: prompt, description, subagentType } = command
+  const started = await $.agent.spawn({ prompt, description, subagentType })
+  if ('deny' in started && started.deny !== undefined) return failure(started.deny)
+  if (started.agentId === undefined) return { ok: true }
+  publish($, {
+    type: EventType.AGENT_SPAWNED,
+    agentId: started.agentId,
+    parentId: MAIN_AGENT_ID,
+    agentType: subagentType,
+    description,
+    name: null,
+    prompt,
+    background: true,
+  })
+  return { ok: true }
+}
+
+async function answerCommand($: EngineInterface, command: OfficeCommand): Promise<void> {
+  let outcome: CommandOutcome
+  try {
+    outcome = await runCommand($, command)
+  } catch (error) {
+    outcome = failure(error)
+  }
+  try {
+    const body = JSON.stringify(outcome)
+    await $.http.fetch(commandResultUrl(command.id), { method: 'POST', headers: JSON_HEADERS, body })
+  } catch {
+    // The page gives up waiting and says the session did not answer.
+  }
+}
+
+async function takeCommands($: EngineInterface): Promise<OfficeCommand[] | null> {
+  try {
+    const response = await $.http.fetch(commandsUrl(sessionId, COMMAND_POLL_WAIT_MS))
+    return response.ok ? readCommands(response.text) : null
+  } catch {
+    return null
+  }
+}
+
+// Long-polls the office server for the page's commands while the session lives; each runs on its own,
+// so a prompt waiting for the session to go idle does not hold up a stop.
+async function pollCommands($: EngineInterface): Promise<void> {
+  if (pollingCommands) return
+  pollingCommands = true
+  try {
+    while (!sessionOver) {
+      const commands = await takeCommands($)
+      if (commands === null) await $.clock.sleep(COMMAND_RETRY_MS)
+      for (const command of commands ?? []) void answerCommand($, command)
+    }
+  } catch (error) {
+    $.ui.log(`agents-at-work stopped taking office commands: ${String(error)}`, { to: 'debug' })
+  } finally {
+    pollingCommands = false
+  }
+}
+
 const onToolCheck: Hook<'tool.check'> = async ($, e, next) => {
   const verdict = await next(e)
   if (!shouldAskOffice(verdict.decision, e.tool, e.tool_use_id)) return verdict
@@ -250,20 +353,25 @@ const onSessionStart: Hook<'session.start'> = async ($, e, next) => {
   $.clock.every(SERVER_CHECK_INTERVAL_MS, () => void ensureOfficeServer($))
   publish($, { type: EventType.SESSION_START })
   void publishRunningAgents($)
+  sessionOver = false
+  void pollCommands($)
   return started
 }
 
 const onSessionEnd: Hook<'session.end'> = async ($, e, next) => {
+  sessionOver = true
   publish($, { type: EventType.SESSION_END, reason: e.reason })
   return next(e)
 }
 
 const onTurnStart: Hook<'turn.start'> = async ($, e, next) => {
+  runningTurns.started(undefined, e.turnId)
   publish($, { type: EventType.TURN_START, agentId: MAIN_AGENT_ID })
   return next(e)
 }
 
 const onTurnComplete: Hook<'turn.complete'> = async ($, e, next) => {
+  runningTurns.ended(e.agentId, e.turnId)
   if (e.agentId === undefined) {
     publish($, { type: EventType.TURN_END, agentId: MAIN_AGENT_ID, reason: e.reason })
   } else {
@@ -307,6 +415,7 @@ const onToolCall: Hook<'tool.call'> = async ($, e, next) => {
 }
 
 const onTurnStep: Hook<'turn.step'> = async function* ($, e, next) {
+  runningTurns.started(e.agentId, e.turnId)
   const relay = new ThinkingRelay(e.agentId ?? MAIN_AGENT_ID, () => Date.now())
   try {
     for await (const chunk of next(e)) {

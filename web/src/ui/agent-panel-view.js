@@ -2,6 +2,7 @@ import { MAIN_AGENT_ID } from '#shared/protocol.js'
 import { agentDisplayName, escapeHtml } from '../agents/agent-names.js'
 import { toolBubbleText } from '../agents/tool-catalog.js'
 import { formatShortDuration, formatTimeOfDay, formatToolDuration } from '../i18n/formatters.js'
+import { renderAgentControls } from './agent-control-view.js'
 import { panelHeaderHtml } from './panel-header.js'
 import { renderPermissionRequest } from './permission-view.js'
 
@@ -17,6 +18,8 @@ import { renderPermissionRequest } from './permission-view.js'
  * @property {Translator} translator
  * @property {number} now Epoch milliseconds, for tools still running.
  * @property {boolean} canDecide Whether this page holds the key to answer permission requests.
+ * @property {Omit<import('./agent-control-view.js').AgentControlInput, 'snapshot' | 'translator'>} [controls]
+ *   The prompt / message / stop controls; left out, the panel only shows.
  */
 
 const HISTORY_SHOWN = 40
@@ -45,6 +48,7 @@ export function renderAgentPanel(input) {
     snapshot.pendingPermission
       ? renderPermissionRequest(snapshot.pendingPermission, { canDecide: input.canDecide, translator })
       : '',
+    input.controls ? renderAgentControls({ ...input.controls, snapshot, translator }) : '',
     factsHtml(input),
     activeToolsHtml(snapshot, translator),
     taskHtml(snapshot, translator),

@@ -38,6 +38,16 @@ its panel shows **Allow / Deny**. Answer there, or wait 60 s and the usual termi
 no office page open, nothing changes: the terminal asks right away. Questions (`AskUserQuestion`) and
 plan approval stay in the terminal — Claude Code only lets plugins tighten those.
 
+### Drive the agents from the office
+
+Click an agent and use its panel the way you would use the terminal:
+
+- **Main agent:** type a prompt and **Send** (Ctrl+Enter). It enters the session as if you had typed it;
+  while the agent is busy it waits for the current turn to end.
+- **Subagent:** send it a message. If it already finished, the message resumes it.
+- **Stop** interrupts the agent's running turn.
+- **+ New subagent** (in the main agent's panel) hires one with a description, a type and a task.
+
 Only the page opened by `/office` can answer: the link carries a per-session secret key (removed from
 the address bar on load). The server also refuses requests from other web sites, foreign host names
 (DNS rebinding) and browsers on the routes reserved for the plugin.

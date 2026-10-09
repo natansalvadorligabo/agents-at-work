@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
+import { CommandDesk } from '../../server/command-desk.js'
 import { ControlKeys } from '../../server/control-keys.js'
 import { createRequestListener } from '../../server/http-app.js'
 import { PermissionDesk } from '../../server/permission-desk.js'
 import { SessionStore } from '../../server/session-store.js'
 import { StaticFiles } from '../../server/static-files.js'
 import { StreamHub } from '../../server/stream-hub.js'
-import { FakeClock } from '../fakes/fake-clock.js'
+import { FakeClock, flushMicrotasks } from '../fakes/fake-clock.js'
 import { FakeFileReader } from '../fakes/fake-file-reader.js'
 import { FakeIncomingRequest, FakeServerResponse } from '../fakes/fake-http.js'
 
@@ -31,6 +32,8 @@ function createApp() {
     hub,
     desk,
     keys: new ControlKeys(),
+    commands: new CommandDesk({ timeouts: clock }),
+    newId: () => 'cmd_1',
     staticFiles,
     port: 47821,
     now: () => 1,
@@ -165,5 +168,80 @@ describe('createRequestListener: permissions', () => {
     assert.equal(JSON.parse((await waiting).body).decision, 'pending')
     assert.equal((await app.request('DELETE', '/permissions/toolu_1')).statusCode, 204)
     assert.equal(app.store.snapshot('s1')?.agents[0]?.pendingPermission, null)
+  })
+})
+
+describe('createRequestListener: commands', () => {
+  const SIGNED = { ...PAGE, 'x-agents-at-work-key': KEY }
+
+  /**
+   * @param {ReturnType<typeof createApp>} app
+   * @param {Record<string, string>} command
+   * @param {Record<string, string>} [headers]
+   */
+  async function submit(app, command, headers = SIGNED) {
+    await app.request('POST', '/control/register', { body: JSON.stringify({ sessionId: 's1', key: KEY }) })
+    return app.request('POST', '/commands', {
+      body: JSON.stringify({ sessionId: 's1', ...command }),
+      headers,
+    })
+  }
+
+  it('hands the page prompt to the polling plugin and its outcome back to the page', async () => {
+    const app = createApp()
+    const sent = submit(app, { kind: 'prompt', agentId: 'main', text: ' run the tests ' })
+    const polled = await app.request('GET', '/commands?session=s1&waitMs=20000')
+    assert.deepEqual(JSON.parse(polled.body).commands, [
+      { id: 'cmd_1', kind: 'prompt', agentId: 'main', text: 'run the tests' },
+    ])
+    const reported = await app.request('POST', '/commands/cmd_1/result', { body: '{"ok":true}' })
+    assert.equal(reported.statusCode, 204)
+    const response = await sent
+    assert.equal(response.statusCode, 200)
+    assert.deepEqual(JSON.parse(response.body), { ok: true })
+  })
+
+  it('passes the session refusal to the page', async () => {
+    const app = createApp()
+    const sent = submit(app, { kind: 'stop', agentId: 'a1' })
+    await app.request('GET', '/commands?session=s1')
+    await app.request('POST', '/commands/cmd_1/result', { body: '{"ok":false,"error":"not running"}' })
+    const response = await sent
+    assert.equal(response.statusCode, 422)
+    assert.deepEqual(JSON.parse(response.body), { ok: false, error: 'not running' })
+  })
+
+  it('fills in a spawn description and type', async () => {
+    const app = createApp()
+    void submit(app, { kind: 'spawn', agentId: 'main', text: 'Read README.md and list the scripts' })
+    const polled = await app.request('GET', '/commands?session=s1')
+    assert.deepEqual(JSON.parse(polled.body).commands[0], {
+      id: 'cmd_1',
+      kind: 'spawn',
+      agentId: 'main',
+      text: 'Read README.md and list the scripts',
+      description: 'Read README.md and list the scripts',
+      subagentType: 'general-purpose',
+    })
+  })
+
+  it('answers 504 when no session picks the command up', async () => {
+    const app = createApp()
+    const sent = submit(app, { kind: 'prompt', agentId: 'main', text: 'hi' })
+    await flushMicrotasks()
+    await app.clock.advance(20000)
+    assert.equal((await sent).statusCode, 504)
+  })
+
+  it('refuses commands without the key, malformed ones, and polling from browsers', async () => {
+    const app = createApp()
+    const unsigned = await submit(app, { kind: 'prompt', agentId: 'main', text: 'hi' }, PAGE)
+    assert.equal(unsigned.statusCode, 403)
+    assert.equal((await submit(app, { kind: 'prompt', agentId: 'main', text: '  ' })).statusCode, 400)
+    assert.equal((await submit(app, { kind: 'message', agentId: 'main', text: 'hi' })).statusCode, 400)
+    assert.equal((await submit(app, { kind: 'prompt', agentId: 'a1', text: 'hi' })).statusCode, 400)
+    assert.equal((await submit(app, { kind: 'dance', agentId: 'main' })).statusCode, 400)
+    const polled = await app.request('GET', '/commands?session=s1', { headers: PAGE })
+    assert.equal(polled.statusCode, 403)
   })
 })

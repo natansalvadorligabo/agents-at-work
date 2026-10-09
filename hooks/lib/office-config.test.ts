@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { browserOpenCommands, officePageUrl, permissionUrl } from './office-config.js'
+import {
+  browserOpenCommands,
+  commandResultUrl,
+  commandsUrl,
+  officePageUrl,
+  permissionUrl,
+} from './office-config.js'
 
 describe('officePageUrl', () => {
   test('carries the session id and the control key', async () => {
@@ -11,6 +17,13 @@ describe('permissionUrl', () => {
   test('adds the wait only for long-polls', async () => {
     expect(permissionUrl('toolu_1', 25000)).toBe('http://127.0.0.1:47821/permissions/toolu_1?waitMs=25000')
     expect(permissionUrl('toolu_1')).toBe('http://127.0.0.1:47821/permissions/toolu_1')
+  })
+})
+
+describe('commandsUrl', () => {
+  test('long-polls the session commands', async () => {
+    expect(commandsUrl('s 1', 25000)).toBe('http://127.0.0.1:47821/commands?session=s%201&waitMs=25000')
+    expect(commandResultUrl('c/1')).toBe('http://127.0.0.1:47821/commands/c%2F1/result')
   })
 })
 

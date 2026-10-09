@@ -5,6 +5,7 @@ export const HEALTH_URL = `${OFFICE_URL}${Route.HEALTH}`
 export const EVENTS_URL = `${OFFICE_URL}${Route.EVENTS}`
 export const CONTROL_REGISTER_URL = `${OFFICE_URL}${Route.CONTROL_REGISTER}`
 export const PERMISSIONS_URL = `${OFFICE_URL}${Route.PERMISSIONS}`
+export const COMMANDS_URL = `${OFFICE_URL}${Route.COMMANDS}`
 export const SERVER_PORT_ENV = 'AGENTS_AT_WORK_PORT'
 
 /**
@@ -23,6 +24,23 @@ export function officePageUrl(sessionId: string, controlKey: string): string {
 export function permissionUrl(requestId: string, waitMs?: number): string {
   const wait = waitMs === undefined ? '' : `?waitMs=${waitMs}`
   return `${PERMISSIONS_URL}/${encodeURIComponent(requestId)}${wait}`
+}
+
+/**
+ * The long-poll address for the office page's commands to one session.
+ * @example commandsUrl('s 1', 25000) // 'http://127.0.0.1:47821/commands?session=s%201&waitMs=25000'
+ */
+export function commandsUrl(sessionId: string, waitMs: number): string {
+  const query = new URLSearchParams({ session: sessionId, waitMs: String(waitMs) })
+  return `${COMMANDS_URL}?${query.toString().replace(/\+/g, '%20')}`
+}
+
+/**
+ * Where the hooks module says how one command went.
+ * @example commandResultUrl('c1') // 'http://127.0.0.1:47821/commands/c1/result'
+ */
+export function commandResultUrl(commandId: string): string {
+  return `${COMMANDS_URL}/${encodeURIComponent(commandId)}/result`
 }
 
 /**

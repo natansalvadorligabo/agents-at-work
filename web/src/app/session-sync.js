@@ -1,3 +1,4 @@
+import { createAgentSnapshot } from '#shared/agent-snapshot.js'
 import { AgentStatus, EventType, MAIN_AGENT_ID } from '#shared/protocol.js'
 
 /**
@@ -23,6 +24,7 @@ import { AgentStatus, EventType, MAIN_AGENT_ID } from '#shared/protocol.js'
  * @property {(agentId: string) => void} onAgentChanged
  * @property {(agentId: string) => void} onPermissionRequested An agent raised its hand.
  * @property {string | null} sessionId The session asked for in the URL; null follows the first one seen.
+ * @property {() => number} [now] Epoch milliseconds, for the main agent of a session that has not run yet.
  */
 
 /**
@@ -49,11 +51,17 @@ export class SessionSync {
   }
 
   /**
+   * The latest snapshot of an agent. The main agent always has one: a session that has not run a turn
+   * yet has it idle at its desk, ready for a first prompt from the office.
    * @param {string} agentId
    * @returns {AgentSnapshot | undefined}
    */
   snapshotOf(agentId) {
-    return this.#snapshots.get(agentId)
+    const known = this.#snapshots.get(agentId)
+    if (known || agentId !== MAIN_AGENT_ID) return known
+    const idle = createAgentSnapshot(MAIN_AGENT_ID, {}, (this.#deps.now ?? Date.now)())
+    this.#snapshots.set(MAIN_AGENT_ID, idle)
+    return idle
   }
 
   /** @param {SessionSnapshot | null} session */
