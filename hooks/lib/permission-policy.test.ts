@@ -12,6 +12,11 @@ describe('shouldAskOffice', () => {
     expect(shouldAskOffice('ask', 'AskUserQuestion', 'toolu_1')).toBe(false)
     expect(shouldAskOffice('ask', 'ExitPlanMode', 'toolu_1')).toBe(false)
   })
+
+  // Regression: an office allow of SubagentHandback was refused, so no subagent report ever arrived.
+  test("leaves a subagent's report hand-back to the engine", async () => {
+    expect(shouldAskOffice('ask', 'SubagentHandback', 'toolu_1')).toBe(false)
+  })
 })
 
 describe('readPollAnswer', () => {

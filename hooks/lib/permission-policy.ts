@@ -7,6 +7,9 @@ export const POLL_WAIT_MS = 25_000
 
 // The engine only lets a hook tighten these: its `allow` would not dismiss the person's dialog.
 const PERSON_ONLY_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode', 'EnterPlanMode'])
+// A subagent hands its report back through this; only the auto-mode classifier may allow it, so an allow
+// from the office is refused and the report never arrives.
+const ENGINE_ONLY_TOOLS = new Set(['SubagentHandback'])
 
 export type FinalDecision = 'allow' | 'deny'
 
@@ -16,7 +19,12 @@ export type FinalDecision = 'allow' | 'deny'
  * @example shouldAskOffice('ask', 'Bash', 'toolu_1') // true
  */
 export function shouldAskOffice(decision: string, tool: string, toolUseId: string | undefined): boolean {
-  return decision === 'ask' && toolUseId !== undefined && !PERSON_ONLY_TOOLS.has(tool)
+  return (
+    decision === 'ask' &&
+    toolUseId !== undefined &&
+    !PERSON_ONLY_TOOLS.has(tool) &&
+    !ENGINE_ONLY_TOOLS.has(tool)
+  )
 }
 
 /**
