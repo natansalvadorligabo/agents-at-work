@@ -2,7 +2,7 @@
 
 > **Beta.** A Claude Code mod (installed like a plugin) that shows your session as a voxel office in the browser: the main agent
 > and every subagent walk to the bookshelf, the server rack or the whiteboard as they use tools, hand
-> tasks and results to each other in envelopes — and spend way too long at the coffee machine.
+> tasks and results to each other in envelopes, and spend way too long at the coffee machine.
 
 [![The office at work: new hires get their envelopes, everyone works at the stations, long builds turn into coffee and gossip, and a failing test ends in a desk punch](docs/media/showcase.gif)](docs/media/showcase.mp4)
 
@@ -33,14 +33,14 @@ Time at the coffee machine is **blocked time**:
 - Two agents on a break start gossiping. From the fifth cup on, they shake: _"☕×5 I FEEL GREAT"_.
 - Click the coffee machine for the _Employee of the month (in reverse)_ ranking.
 
-The page speaks **Português (Brasil)** and **English (US)** — switch with the flags in the top-right corner.
+The page speaks **Português (Brasil)** and **English (US)**. Switch with the flags in the top-right corner.
 
 ### Approve tools from the office
 
 When Claude Code would ask permission for a tool call, the agent **raises its hand** in the office and
 its panel shows **Allow / Deny**. Answer there, or wait 60 s and the usual terminal dialog appears. With
 no office page open, nothing changes: the terminal asks right away. Questions (`AskUserQuestion`) and
-plan approval stay in the terminal — Claude Code only lets mods tighten those.
+plan approval stay in the terminal, because Claude Code only lets mods tighten those.
 
 ### Drive the agents from the office
 
@@ -58,7 +58,7 @@ the address bar on load). The server also refuses requests from other web sites,
 
 ## Install
 
-Requirements: **Claude Code 2.1.29x or newer** (the mod uses the early-access function hooks API: a `hooks.json` module that runs inside Claude Code) and
+Requirements: **Claude Code 2.1.29x or newer** (the mod uses the early-access function hooks API, a `hooks.json` module that runs inside Claude Code) and
 **Node.js 20+** on your `PATH` (the office server runs on Node). Nothing else: no `npm install` needed.
 
 ```sh
